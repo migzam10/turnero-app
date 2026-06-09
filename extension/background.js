@@ -1,46 +1,29 @@
-// Configuración — debe coincidir con EXTENSION_SECRET en .env del servidor
-const CONFIG = {
-    SERVER_URL: 'http://TU_IP_SERVIDOR:3000',
-    EXTENSION_SECRET: 'cambiar_este_secreto_en_produccion',
-    INTERVALO_MIN: 1  // chrome.alarms mínimo 1 minuto
-};
+const INTERVALO_MIN = 1;
 
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.alarms.create('sync', { periodInMinutes: CONFIG.INTERVALO_MIN });
-    console.log('[BG] Alarma de sincronización creada');
+    chrome.alarms.create('sync', { periodInMinutes: INTERVALO_MIN });
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name !== 'sync') return;
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'sync') ejecutarSync();
+});
 
-    // Solicitar datos al content script de la pestaña activa de Biofile
-    const tabs = await chrome.tabs.query({ url: '*://ipscertimedic.biofile.com.co/*AtencionesSeguimiento*' });
-    if (tabs.length === 0) return;
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg.tipo !== 'SYNC_AHORA') return;
+    ejecutarSync().then(sendResponse).catch(err => sendResponse({ error: err.message }));
+    return true;
+});
 
-    chrome.tabs.sendMessage(tabs[0].id, { tipo: 'SOLICITAR_DATOS' }, async (respuesta) => {
-        if (chrome.runtime.lastError || !respuesta) return;
-        if (!respuesta.pacientes || respuesta.pacientes.length === 0) return;
-
-        try {
-            const res = await fetch(`${CONFIG.SERVER_URL}/api/extension/sync`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-extension-secret': CONFIG.EXTENSION_SECRET
-                },
-                body: JSON.stringify({
-                    loginName: respuesta.loginName,
-                    terminalId: await getTerminalId(),
-                    pacientes: respuesta.pacientes
-                })
+async function getConfig() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['serverUrl', 'extensionSecret'], (data) => {
+            resolve({
+                serverUrl: data.serverUrl || '',
+                extensionSecret: data.extensionSecret || ''
             });
-            const data = await res.json();
-            console.log('[BG] Sync OK:', data);
-        } catch (err) {
-            console.error('[BG] Error al sincronizar:', err.message);
-        }
+        });
     });
-});
+}
 
 async function getTerminalId() {
     return new Promise(resolve => {
@@ -51,4 +34,37 @@ async function getTerminalId() {
             resolve(id);
         });
     });
+}
+
+async function ejecutarSync() {
+    const { serverUrl, extensionSecret } = await getConfig();
+    if (!serverUrl || !extensionSecret) return { error: 'Configurá la URL y el secret en el popup' };
+
+    const tabs = await chrome.tabs.query({ url: '*://ipscertimedic.biofile.com.co/*AtencionesSeguimiento*' });
+    if (tabs.length === 0) return { error: 'No hay pestaña de Biofile abierta' };
+
+    const respuesta = await new Promise(resolve => {
+        chrome.tabs.sendMessage(tabs[0].id, { tipo: 'SOLICITAR_DATOS' }, (r) => {
+            resolve(chrome.runtime.lastError ? null : r);
+        });
+    });
+
+    if (!respuesta || !respuesta.pacientes?.length) return { error: 'Sin pacientes en Biofile' };
+
+    const res = await fetch(`${serverUrl}/api/extension/sync`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-extension-secret': extensionSecret
+        },
+        body: JSON.stringify({
+            loginName: respuesta.loginName,
+            terminalId: await getTerminalId(),
+            pacientes: respuesta.pacientes
+        })
+    });
+
+    const data = await res.json();
+    chrome.storage.local.set({ lastSync: { ...data, ts: Date.now() } });
+    return data;
 }
