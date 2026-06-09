@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Turnero CertiMedic</title>
+<style>
+:root {
+    --azul: #1a3a6e; --azul2: #2563eb; --verde: #16a34a;
+    --naranja: #d97706; --rojo: #dc2626; --gris: #64748b;
+    --fondo: #f1f5f9; --card: #fff; --borde: #e2e8f0; --texto: #1e293b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); min-height: 100vh; }
+
+.header { background: var(--azul); color: white; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 1.05rem; font-weight: 600; }
+.header-right { display: flex; align-items: center; gap: 14px; font-size: .82rem; }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; }
+.dot-ws.ok { background: #4ade80; }
+
+/* Tabs */
+.tabs { background: var(--card); border-bottom: 1px solid var(--borde); display: flex; padding: 0 24px; gap: 4px; flex-shrink: 0; }
+.tab { padding: 12px 18px; cursor: pointer; font-size: .88rem; font-weight: 600; color: var(--gris); border-bottom: 3px solid transparent; transition: all .2s; white-space: nowrap; }
+.tab:hover { color: var(--azul); }
+.tab.activo { color: var(--azul); border-bottom-color: var(--azul2); }
+
+/* Contenido */
+.contenido { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.panel { display: none; }
+.panel.activo { display: block; }
+
+/* KPI cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi-card { background: var(--card); border-radius: 10px; padding: 16px; border: 1.5px solid var(--borde); }
+.kpi-num { font-size: 2rem; font-weight: 800; }
+.kpi-label { font-size: .72rem; color: var(--gris); text-transform: uppercase; font-weight: 600; margin-top: 4px; }
+.kpi-sub { font-size: .75rem; color: var(--gris); margin-top: 4px; }
+.kpi-azul .kpi-num { color: var(--azul2); }
+.kpi-verde .kpi-num { color: var(--verde); }
+.kpi-naranja .kpi-num { color: var(--naranja); }
+.kpi-rojo .kpi-num { color: var(--rojo); }
+.kpi-gris .kpi-num { color: var(--gris); }
+
+/* Sección */
+.seccion { background: var(--card); border-radius: 10px; border: 1.5px solid var(--borde); margin-bottom: 20px; overflow: hidden; }
+.seccion-header { padding: 14px 16px; border-bottom: 1px solid var(--borde); display: flex; align-items: center; justify-content: space-between; }
+.seccion-titulo { font-weight: 700; font-size: .9rem; color: var(--azul); }
+
+/* Tabla */
+.tabla-wrapper { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { padding: 10px 14px; text-align: left; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); background: #f8fafc; border-bottom: 1px solid var(--borde); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--borde); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+
+/* Badges */
+.badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.b-esperando { background: #f1f5f9; color: var(--gris); }
+.b-llamando  { background: #fef3c7; color: #92400e; }
+.b-admisionado { background: #dcfce7; color: var(--verde); }
+.b-pendiente { background: #f1f5f9; color: var(--gris); }
+.b-en_atencion { background: #dbeafe; color: var(--azul2); }
+.b-finalizado { background: #dcfce7; color: var(--verde); }
+.b-alta { background: #fee2e2; color: var(--rojo); }
+.b-media { background: #fef3c7; color: #92400e; }
+.b-normal { background: #f1f5f9; color: var(--gris); }
+
+/* Fecha selector */
+.fecha-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.fecha-row input[type=date] { padding: 7px 10px; border: 1.5px solid var(--borde); border-radius: 7px; font-size: .9rem; font-family: inherit; }
+.btn-buscar { background: var(--azul); color: white; border: none; border-radius: 7px; padding: 7px 16px; font-size: .88rem; font-weight: 600; cursor: pointer; }
+.btn-buscar:hover { background: #152e57; }
+.btn-exportar { background: var(--verde); color: white; border: none; border-radius: 7px; padding: 7px 14px; font-size: .85rem; font-weight: 600; cursor: pointer; }
+.btn-exportar:hover { background: #15803d; }
+.btn-actualizar { background: var(--azul2); color: white; border: none; border-radius: 7px; padding: 7px 12px; font-size: .82rem; cursor: pointer; }
+
+/* Config form */
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; padding: 16px; }
+.config-item { background: #f8fafc; border-radius: 8px; padding: 14px; }
+.config-key { font-size: .75rem; font-weight: 700; color: var(--gris); text-transform: uppercase; margin-bottom: 6px; }
+.config-val { width: 100%; padding: 7px 10px; border: 1.5px solid var(--borde); border-radius: 6px; font-size: .9rem; font-family: inherit; background: white; }
+.config-val:focus { outline: none; border-color: var(--azul2); }
+.config-desc { font-size: .72rem; color: var(--gris); margin-top: 4px; }
+.btn-guardar-config { background: var(--verde); color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: .82rem; font-weight: 600; cursor: pointer; margin-top: 6px; }
+
+/* Terminal activo/inactivo */
+.terminal-activo { color: var(--verde); font-weight: 700; }
+.terminal-inactivo { color: var(--gris); }
+
+/* Loader */
+.loader { text-align: center; padding: 40px; color: var(--gris); font-size: .9rem; }
+
+/* Detalles asignaciones (expandible) */
+.det-asig { font-size: .78rem; color: var(--gris); background: #f8fafc; padding: 6px 10px; border-radius: 6px; margin-top: 4px; display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚙ Admin — Turnero CertiMedic</h1>
+    <div class="header-right">
+        <span id="reloj-admin">--:--</span>
+        <div class="dot-ws" id="dot-ws"></div>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab activo" onclick="mostrarTab('dashboard')">📊 Dashboard</div>
+    <div class="tab" onclick="mostrarTab('pacientes')">👥 Pacientes</div>
+    <div class="tab" onclick="mostrarTab('reportes')">📈 Reportes</div>
+    <div class="tab" onclick="mostrarTab('configuracion')">⚙ Configuración</div>
+    <div class="tab" onclick="mostrarTab('terminales')">💻 Terminales</div>
+</div>
+
+<div class="contenido">
+    <!-- ─────────── DASHBOARD ─────────── -->
+    <div class="panel activo" id="panel-dashboard">
+        <div class="kpi-grid" id="kpis-grid">
+            <div class="loader">Cargando...</div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Estado en tiempo real — Admisiones</span>
+                <button class="btn-actualizar" onclick="cargarDashboard()">↺ Actualizar</button>
+            </div>
+            <div class="tabla-wrapper"><table id="tabla-admisiones-dash"><tr><td class="loader">Cargando...</td></tr></table></div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Estado — Profesionales</span></div>
+            <div class="tabla-wrapper"><table id="tabla-profesionales-dash"><tr><td class="loader">Cargando...</td></tr></table></div>
+        </div>
+    </div>
+
+    <!-- ─────────── PACIENTES ─────────── -->
+    <div class="panel" id="panel-pacientes">
+        <div class="fecha-row">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
+            <input type="date" id="fecha-pacientes">
+            <button class="btn-buscar" onclick="cargarPacientes()">Buscar</button>
+            <button class="btn-exportar" onclick="exportarCSVPacientes()">⬇ CSV</button>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo" id="titulo-pacientes">Pacientes</span>
+            </div>
+            <div class="tabla-wrapper">
+                <table id="tabla-pacientes">
+                    <thead><tr><th>Cédula</th><th>Nombre</th><th>Llegada</th><th>Prioridad</th><th>Estado</th><th>Módulo</th><th>Admisión</th><th>Asignaciones</th></tr></thead>
+                    <tbody id="tbody-pacientes"><tr><td colspan="8" class="loader">Seleccione una fecha</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────── REPORTES ─────────── -->
+    <div class="panel" id="panel-reportes">
+        <div class="fecha-row">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Desde:</label>
+            <input type="date" id="rep-desde">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Hasta:</label>
+            <input type="date" id="rep-hasta">
+            <button class="btn-buscar" onclick="cargarReporte()">Generar reporte</button>
+            <button class="btn-exportar" onclick="exportarCSVReporte()">⬇ CSV</button>
+        </div>
+        <div id="contenido-reporte"></div>
+    </div>
+
+    <!-- ─────────── CONFIGURACIÓN ─────────── -->
+    <div class="panel" id="panel-configuracion">
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Parámetros del sistema</span>
+                <button class="btn-actualizar" onclick="cargarConfig()">↺ Recargar</button>
+            </div>
+            <div class="config-grid" id="config-grid"><div class="loader">Cargando...</div></div>
+        </div>
+    </div>
+
+    <!-- ─────────── TERMINALES ─────────── -->
+    <div class="panel" id="panel-terminales">
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Terminales conectados</span>
+                <button class="btn-actualizar" onclick="cargarTerminales()">↺ Actualizar</button>
+            </div>
+            <div class="tabla-wrapper">
+                <table>
+                    <thead><tr><th>ID</th><th>Tipo</th><th>Consultorio</th><th>Profesional / Login</th><th>Último heartbeat</th><th>Estado</th></tr></thead>
+                    <tbody id="tbody-terminales"><tr><td colspan="6" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Reloj ───────────────────────────────────────────────────────
+setInterval(() => {
+    document.getElementById('reloj-admin').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+}, 1000);
+
+// ── Socket ──────────────────────────────────────────────────────
+const socket = io();
+socket.on('connect', () => {
+    document.getElementById('dot-ws').classList.add('ok');
+    socket.emit('join', { tipo: 'admin', terminalId: 'admin-' + Date.now() });
+});
+socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+
+// ── Tabs ────────────────────────────────────────────────────────
+function mostrarTab(nombre) {
+    document.querySelectorAll('.tab').forEach((t, i) => t.classList.remove('activo'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('activo'));
+    const tabs = document.querySelectorAll('.tab');
+    const paneles = { dashboard: 0, pacientes: 1, reportes: 2, configuracion: 3, terminales: 4 };
+    tabs[paneles[nombre]].classList.add('activo');
+    document.getElementById(`panel-${nombre}`).classList.add('activo');
+
+    if (nombre === 'dashboard') cargarDashboard();
+    if (nombre === 'configuracion') cargarConfig();
+    if (nombre === 'terminales') cargarTerminales();
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+function fmt(n) { return n !== null && n !== undefined ? String(n) : '—'; }
+function horaFmt(ts) { return ts ? new Date(ts).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—'; }
+function fechaHoy() { return new Date().toISOString().split('T')[0]; }
+
+// ── Dashboard ────────────────────────────────────────────────────
+async function cargarDashboard() {
+    try {
+        const resp = await fetch(`/api/admin/resumen-dia?fecha=${fechaHoy()}`);
+        const { cola, asignaciones } = await resp.json();
+
+        // KPIs
+        document.getElementById('kpis-grid').innerHTML = `
+            <div class="kpi-card kpi-azul"><div class="kpi-num">${cola.total_registrados||0}</div><div class="kpi-label">Registrados hoy</div></div>
+            <div class="kpi-card kpi-verde"><div class="kpi-num">${cola.total_admisionados||0}</div><div class="kpi-label">Admisionados</div></div>
+            <div class="kpi-card kpi-naranja"><div class="kpi-num">${cola.en_espera||0}</div><div class="kpi-label">En espera</div></div>
+            <div class="kpi-card kpi-rojo"><div class="kpi-num">${cola.prioridad_alta||0}</div><div class="kpi-label">Prioridad alta</div></div>
+            <div class="kpi-card kpi-azul"><div class="kpi-num">${asignaciones.en_atencion||0}</div><div class="kpi-label">En atención</div></div>
+            <div class="kpi-card kpi-verde"><div class="kpi-num">${asignaciones.finalizados||0}</div><div class="kpi-label">Finalizados</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${cola.avg_min_espera_admision||'—'}</div><div class="kpi-label">Min. espera prom.</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${asignaciones.profesionales_activos||0}</div><div class="kpi-label">Profesionales activos</div></div>
+        `;
+
+        // Tabla admisiones
+        const respCola = await fetch('/api/admin/pacientes?fecha=' + fechaHoy());
+        const pacientes = await respCola.json();
+        const enCola = pacientes.filter(p => p.estado_admision !== 'admisionado');
+        document.getElementById('tabla-admisiones-dash').innerHTML = `
+            <thead><tr><th>Nombre</th><th>Cédula</th><th>Llegada</th><th>Prioridad</th><th>Estado</th></tr></thead>
+            <tbody>${enCola.length ? enCola.slice(0,15).map(p => `
+                <tr><td>${p.nombre_completo}</td><td>${p.numero_identificacion}</td>
+                <td>${horaFmt(p.hora_llegada)}</td>
+                <td><span class="badge b-${p.prioridad}">${p.prioridad}</span></td>
+                <td><span class="badge b-${p.estado_admision}">${p.estado_admision.replace('_',' ')}</span></td></tr>
+            `).join('') : '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gris)">Sin pacientes en cola</td></tr>'}</tbody>`;
+
+        // Tabla profesionales
+        const resp2 = await fetch(`/api/admin/reporte-detallado?fecha=${fechaHoy()}`);
+        const det = await resp2.json();
+        document.getElementById('tabla-profesionales-dash').innerHTML = `
+            <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>En proceso</th><th>Finalizados</th><th>Prom. atención</th></tr></thead>
+            <tbody>${det.por_profesional?.length ? det.por_profesional.map(p => `
+                <tr><td>${p.nombre_profesional}</td><td>${p.area}</td>
+                <td>${p.total_asignados}</td>
+                <td>${p.en_proceso||0}</td>
+                <td>${p.finalizados||0}</td>
+                <td>${p.avg_min_atencion ? p.avg_min_atencion + ' min' : '—'}</td></tr>
+            `).join('') : '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>`;
+    } catch (e) { console.error(e); }
+}
+
+// ── Pacientes ────────────────────────────────────────────────────
+let dataPacientes = [];
+document.getElementById('fecha-pacientes').value = fechaHoy();
+
+async function cargarPacientes() {
+    const fecha = document.getElementById('fecha-pacientes').value || fechaHoy();
+    document.getElementById('titulo-pacientes').textContent = `Pacientes — ${fecha}`;
+    document.getElementById('tbody-pacientes').innerHTML = '<tr><td colspan="8" class="loader">Cargando...</td></tr>';
+    try {
+        const resp = await fetch(`/api/admin/pacientes?fecha=${fecha}`);
+        dataPacientes = await resp.json();
+        renderTablaPacientes(dataPacientes);
+    } catch {}
+}
+
+function renderTablaPacientes(lista) {
+    const tbody = document.getElementById('tbody-pacientes');
+    if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--gris)">Sin registros</td></tr>';
+        return;
+    }
+    tbody.innerHTML = lista.map(p => {
+        const asigs = (p.asignaciones || []).map(a =>
+            `<span class="det-asig">${a.profesional} (${a.area}) · <span class="badge b-${a.estado}">${a.estado}</span></span> `
+        ).join('');
+        return `<tr>
+            <td>${p.numero_identificacion}</td>
+            <td>${p.nombre_completo}</td>
+            <td>${horaFmt(p.hora_llegada)}</td>
+            <td><span class="badge b-${p.prioridad}">${p.prioridad}</span></td>
+            <td><span class="badge b-${p.estado_admision}">${p.estado_admision.replace('_',' ')}</span></td>
+            <td>${p.modulo_admision || '—'}</td>
+            <td>${horaFmt(p.hora_admision)}</td>
+            <td>${asigs || '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+function exportarCSVPacientes() {
+    if (!dataPacientes.length) return;
+    const filas = [['Cedula','Nombre','Llegada','Prioridad','Estado','Modulo','Admision']];
+    dataPacientes.forEach(p => {
+        filas.push([p.numero_identificacion, p.nombre_completo, horaFmt(p.hora_llegada), p.prioridad, p.estado_admision, p.modulo_admision||'', horaFmt(p.hora_admision)]);
+    });
+    descargarCSV(filas, `pacientes_${document.getElementById('fecha-pacientes').value}.csv`);
+}
+
+// ── Reportes ─────────────────────────────────────────────────────
+let dataReporte = null;
+(() => {
+    const hoy = fechaHoy();
+    document.getElementById('rep-desde').value = hoy;
+    document.getElementById('rep-hasta').value = hoy;
+})();
+
+async function cargarReporte() {
+    const desde = document.getElementById('rep-desde').value;
+    const hasta = document.getElementById('rep-hasta').value;
+    const el = document.getElementById('contenido-reporte');
+    el.innerHTML = '<div class="loader">Generando reporte...</div>';
+
+    if (desde === hasta) {
+        // Reporte detallado de un día
+        try {
+            const resp = await fetch(`/api/admin/reporte-detallado?fecha=${desde}`);
+            const data = await resp.json();
+            dataReporte = data;
+            el.innerHTML = renderReporteDetallado(data);
+        } catch {}
+    } else {
+        // Reporte rango
+        try {
+            const resp = await fetch(`/api/admin/reporte-rango?desde=${desde}&hasta=${hasta}`);
+            const data = await resp.json();
+            dataReporte = data;
+            el.innerHTML = renderReporteRango(data);
+        } catch {}
+    }
+}
+
+function renderReporteDetallado(data) {
+    const k = data.kpis || {};
+    return `
+        <div class="kpi-grid" style="margin-bottom:16px">
+            <div class="kpi-card kpi-azul"><div class="kpi-num">${k.total_pacientes||0}</div><div class="kpi-label">Total pacientes</div></div>
+            <div class="kpi-card kpi-verde"><div class="kpi-num">${k.admisionados||0}</div><div class="kpi-label">Admisionados</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_espera_admision||'—'}</div><div class="kpi-label">Min. espera admisión</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_tiempo_atencion_general||'—'}</div><div class="kpi-label">Min. prom. atención</div></div>
+        </div>
+        <div class="seccion" style="margin-bottom:16px">
+            <div class="seccion-header"><span class="seccion-titulo">Por profesional</span></div>
+            <div class="tabla-wrapper"><table>
+                <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>Finalizados</th><th>En proceso</th><th>Pend.</th><th>Prom. atención</th><th>Min.</th><th>Max.</th></tr></thead>
+                <tbody>${(data.por_profesional||[]).map(p => `
+                    <tr><td>${p.nombre_profesional}</td><td>${p.area}</td>
+                    <td>${p.total_asignados}</td><td>${p.finalizados||0}</td><td>${p.en_proceso||0}</td><td>${p.pendientes||0}</td>
+                    <td>${p.avg_min_atencion ? p.avg_min_atencion + ' min' : '—'}</td>
+                    <td>${p.min_min_atencion ? p.min_min_atencion + ' min' : '—'}</td>
+                    <td>${p.max_min_atencion ? p.max_min_atencion + ' min' : '—'}</td></tr>
+                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+            </table></div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Timeline T1→T5 por paciente</span></div>
+            <div class="tabla-wrapper"><table>
+                <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Min. espera</th><th>Min. total</th></tr></thead>
+                <tbody>${(data.timeline||[]).map(p => `
+                    <tr><td>${p.cedula}</td><td>${p.paciente}</td>
+                    <td>${horaFmt(p.t1_llegada)}</td><td>${horaFmt(p.t2_sistema)}</td>
+                    <td>${horaFmt(p.t3_primer_llamado)}</td><td>${horaFmt(p.t4_primera_atencion)}</td>
+                    <td>${horaFmt(p.t5_ultima_finalizacion)}</td>
+                    <td>${p.min_espera_admision ? p.min_espera_admision + ' min' : '—'}</td>
+                    <td>${p.min_tiempo_total_clinica ? p.min_tiempo_total_clinica + ' min' : '—'}</td></tr>
+                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+            </table></div>
+        </div>`;
+}
+
+function renderReporteRango(data) {
+    return `<div class="seccion">
+        <div class="seccion-header"><span class="seccion-titulo">Resumen por profesional — ${data.desde} al ${data.hasta}</span></div>
+        <div class="tabla-wrapper"><table>
+            <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Prom. atención</th><th>Espera prom.</th></tr></thead>
+            <tbody>${(data.datos||[]).map(r => `
+                <tr><td>${r.fecha}</td><td>${r.nombre_profesional}</td><td>${r.area}</td>
+                <td>${r.pacientes_atendidos||0}</td>
+                <td>${r.avg_min_atencion ? r.avg_min_atencion + ' min' : '—'}</td>
+                <td>${r.avg_espera_admision ? r.avg_espera_admision + ' min' : '—'}</td></tr>
+            `).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+        </table></div>
+    </div>`;
+}
+
+function exportarCSVReporte() {
+    if (!dataReporte) return;
+    let filas;
+    if (dataReporte.timeline) {
+        filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Min.Espera','Min.Total']];
+        (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_tiempo_total_clinica||'']));
+    } else {
+        filas = [['Fecha','Profesional','Area','Atendidos','Prom.Atencion','Espera.Prom']];
+        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.avg_min_atencion||'',r.avg_espera_admision||'']));
+    }
+    descargarCSV(filas, `reporte_${document.getElementById('rep-desde').value}_${document.getElementById('rep-hasta').value}.csv`);
+}
+
+// ── Configuración ─────────────────────────────────────────────
+async function cargarConfig() {
+    try {
+        const resp = await fetch('/api/admin/config');
+        const configs = await resp.json();
+        document.getElementById('config-grid').innerHTML = configs.map(c => `
+            <div class="config-item">
+                <div class="config-key">${c.clave}</div>
+                <input class="config-val" id="cfg-${c.clave}" value="${c.valor || ''}">
+                <div class="config-desc">${c.descripcion || ''}</div>
+                <button class="btn-guardar-config" onclick="guardarConfig('${c.clave}')">Guardar</button>
+            </div>
+        `).join('');
+    } catch {}
+}
+
+async function guardarConfig(clave) {
+    const valor = document.getElementById(`cfg-${clave}`).value;
+    try {
+        const resp = await fetch('/api/admin/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave, valor })
+        });
+        if (resp.ok) {
+            const el = document.querySelector(`[onclick="guardarConfig('${clave}')"]`);
+            const txt = el.textContent;
+            el.textContent = '✓ Guardado';
+            el.style.background = '#15803d';
+            setTimeout(() => { el.textContent = txt; el.style.background = ''; }, 2000);
+        }
+    } catch {}
+}
+
+// ── Terminales ────────────────────────────────────────────────
+async function cargarTerminales() {
+    try {
+        const resp = await fetch('/api/admin/terminales');
+        const terminales = await resp.json();
+        const tbody = document.getElementById('tbody-terminales');
+        if (!terminales.length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gris)">Sin terminales registrados</td></tr>';
+            return;
+        }
+        tbody.innerHTML = terminales.map(t => {
+            const ultimoHB = t.ultimo_heartbeat ? new Date(t.ultimo_heartbeat) : null;
+            const segs = ultimoHB ? Math.floor((Date.now() - ultimoHB) / 1000) : 999999;
+            const activo = segs < 120;
+            const tiempoStr = ultimoHB ? ultimoHB.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
+            return `<tr>
+                <td style="font-family:monospace;font-size:.78rem">${t.id?.slice(0,12)||'—'}…</td>
+                <td><span class="badge b-${t.tipo}">${t.tipo}</span></td>
+                <td>${t.consultorio_numero || '—'}</td>
+                <td>${t.login_name_biofile || '—'}</td>
+                <td>${tiempoStr}</td>
+                <td class="${activo ? 'terminal-activo' : 'terminal-inactivo'}">${activo ? '● Activo' : '○ Inactivo'}</td>
+            </tr>`;
+        }).join('');
+    } catch {}
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function descargarCSV(filas, nombre) {
+    const csv = filas.map(f => f.map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ── Init ─────────────────────────────────────────────────────
+cargarDashboard();
+</script>
+</body>
+</html>

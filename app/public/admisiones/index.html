@@ -1,19 +1,419 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Admisiones — Turnero</title>
-<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f0f4f8}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.1)}h1{color:#1a3a6e}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;margin-right:6px}.dot.ok{background:#27ae60}</style>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admisiones — Turnero CertiMedic</title>
+<style>
+:root {
+    --azul: #1a3a6e; --azul2: #2563eb; --verde: #16a34a;
+    --naranja: #d97706; --rojo: #dc2626; --gris: #64748b;
+    --fondo: #f1f5f9; --card: #fff; --borde: #e2e8f0; --texto: #1e293b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+.header { background: var(--azul); color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 1.05rem; font-weight: 600; }
+.modulo-badge { background: rgba(255,255,255,.2); border-radius: 6px; padding: 3px 10px; font-size: .82rem; font-weight: 700; cursor: pointer; }
+.header-right { display: flex; align-items: center; gap: 12px; font-size: .82rem; }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; }
+.dot-ws.ok { background: #4ade80; }
+#reloj { font-weight: 600; }
+
+/* Setup overlay */
+.overlay-setup { position: fixed; inset: 0; background: rgba(15,23,42,.7); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.setup-card { background: white; border-radius: 14px; padding: 32px; width: 360px; text-align: center; }
+.setup-card h2 { color: var(--azul); margin-bottom: 6px; }
+.setup-card p { color: var(--gris); font-size: .9rem; margin-bottom: 20px; }
+.setup-select { width: 100%; padding: 10px 14px; border: 2px solid var(--borde); border-radius: 8px; font-size: 1rem; font-family: inherit; margin-bottom: 16px; }
+.btn-setup { width: 100%; background: var(--azul); color: white; border: none; border-radius: 8px; padding: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.btn-setup:hover { background: #152e57; }
+
+/* Layout */
+.layout { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 0; overflow: hidden; }
+
+/* Lista de espera */
+.panel-cola { padding: 16px; overflow-y: auto; }
+.panel-titulo { font-weight: 700; color: var(--azul); font-size: .95rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.count-badge { background: var(--azul); color: white; font-size: .7rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; }
+
+.pac-card { background: var(--card); border-radius: 10px; border: 1.5px solid var(--borde); padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; transition: all .2s; }
+.pac-card:hover { border-color: #93c5fd; box-shadow: 0 2px 8px rgba(37,99,235,.08); }
+.pac-card.activo { border-color: var(--naranja); background: #fffbeb; }
+
+.pri-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pri-normal { background: #94a3b8; }
+.pri-media  { background: var(--naranja); }
+.pri-alta   { background: var(--rojo); }
+
+.pac-info { flex: 1; min-width: 0; }
+.pac-nombre { font-weight: 700; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pac-sub { font-size: .75rem; color: var(--gris); margin-top: 2px; }
+
+.pac-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-sm { padding: 5px 10px; border-radius: 6px; border: none; font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-ver { background: #eff6ff; color: var(--azul2); border: 1px solid #bfdbfe; }
+.btn-ver:hover { background: #dbeafe; }
+.btn-llamar { background: var(--azul); color: white; }
+.btn-llamar:hover { background: #152e57; }
+
+.btn-sm.btn-admisionar { background: var(--verde); color: white; }
+.btn-sm.btn-admisionar:hover { background: #15803d; }
+.btn-sm.btn-devolver { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.btn-sm.btn-devolver:hover { background: #fef08a; }
+
+.vacia { text-align: center; padding: 50px 16px; color: var(--gris); }
+
+/* Panel derecho - en proceso */
+.panel-enproceso { background: var(--card); border-left: 1px solid var(--borde); padding: 16px; overflow-y: auto; }
+.enproceso-item { background: #fff7ed; border: 2px solid var(--naranja); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.ep-modulo { font-size: .72rem; font-weight: 700; color: var(--naranja); text-transform: uppercase; letter-spacing: .05em; }
+.ep-nombre { font-weight: 700; font-size: .95rem; margin: 4px 0 8px; }
+.ep-meta { font-size: .75rem; color: var(--gris); margin-bottom: 10px; }
+.ep-btns { display: flex; gap: 6px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 300; display: none; align-items: center; justify-content: center; }
+.modal-overlay.visible { display: flex; }
+.modal { background: white; border-radius: 14px; padding: 24px; width: 440px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+.modal-titulo { font-size: 1.1rem; font-weight: 700; color: var(--azul); margin-bottom: 16px; }
+.datos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.dato-item { background: #f8fafc; border-radius: 8px; padding: 8px 10px; }
+.dato-label { font-size: .68rem; font-weight: 600; color: var(--gris); text-transform: uppercase; }
+.dato-val { font-size: .9rem; font-weight: 600; margin-top: 2px; }
+.dato-item.full { grid-column: 1/-1; }
+.btn-copiar { width: 100%; background: var(--verde); color: white; border: none; border-radius: 8px; padding: 10px; font-size: .9rem; font-weight: 700; cursor: pointer; margin-bottom: 8px; }
+.btn-copiar:hover { background: #15803d; }
+.btn-copiar:active { background: #166534; }
+.btn-copiar.copiado { background: #166534; }
+.modal-footer { display: flex; gap: 8px; margin-top: 12px; }
+.btn-outline { flex: 1; padding: 9px; border-radius: 8px; border: 2px solid var(--borde); background: white; cursor: pointer; font-size: .85rem; color: var(--gris); }
+.btn-outline:hover { border-color: var(--rojo); color: var(--rojo); }
+
+/* Prioridad selector en modal */
+.prioridad-row { display: flex; gap: 8px; margin-top: 10px; }
+.prioridad-btn { flex: 1; padding: 7px; border-radius: 7px; border: 2px solid var(--borde); background: white; cursor: pointer; font-size: .78rem; font-weight: 600; }
+.prioridad-btn[data-val="normal"].activo { border-color: var(--verde); background: #dcfce7; color: var(--verde); }
+.prioridad-btn[data-val="media"].activo  { border-color: var(--naranja); background: #fef3c7; color: var(--naranja); }
+.prioridad-btn[data-val="alta"].activo   { border-color: var(--rojo); background: #fee2e2; color: var(--rojo); }
+</style>
 </head>
 <body>
-    <div class="card">
-        <h1>Módulo Admisiones</h1>
-        <p>En construcción</p>
-        <div><span class="dot" id="dot"></span><span id="st">Conectando...</span></div>
+
+<!-- Setup overlay -->
+<div class="overlay-setup" id="overlay-setup">
+    <div class="setup-card">
+        <h2>🏥 Módulo de Admisiones</h2>
+        <p>Seleccione el módulo asignado a esta terminal para comenzar</p>
+        <select class="setup-select" id="select-modulo">
+            <option value="">Cargando módulos...</option>
+        </select>
+        <button class="btn-setup" onclick="confirmarModulo()">Confirmar y entrar</button>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const s = io();
-        s.on('connect', () => { document.getElementById('dot').classList.add('ok'); document.getElementById('st').textContent = 'Servidor conectado ✓'; s.emit('join', { tipo: 'admisiones', terminalId: 'test-admisiones' }); });
-        s.on('disconnect', () => { document.getElementById('dot').classList.remove('ok'); document.getElementById('st').textContent = 'Sin conexión'; });
-    </script>
+</div>
+
+<div class="header">
+    <div class="header-left">
+        <h1>🏥 Admisiones — Turnero CertiMedic</h1>
+        <span class="modulo-badge" id="modulo-badge" onclick="cambiarModulo()" title="Clic para cambiar módulo">—</span>
+    </div>
+    <div class="header-right">
+        <span id="reloj">--:--</span>
+        <div class="dot-ws" id="dot-ws"></div>
+    </div>
+</div>
+
+<div class="layout">
+    <!-- Cola de espera -->
+    <div class="panel-cola">
+        <div class="panel-titulo">
+            Cola de espera
+            <span class="count-badge" id="count-espera">0</span>
+        </div>
+        <div id="lista-espera"></div>
+    </div>
+
+    <!-- En proceso -->
+    <div class="panel-enproceso">
+        <div class="panel-titulo">En proceso <span class="count-badge" id="count-enproceso">0</span></div>
+        <div id="lista-enproceso"></div>
+    </div>
+</div>
+
+<!-- Modal datos paciente -->
+<div class="modal-overlay" id="modal-paciente">
+    <div class="modal">
+        <div class="modal-titulo" id="modal-pac-nombre">—</div>
+        <div class="datos-grid" id="modal-datos-grid"></div>
+        <button class="btn-copiar" id="btn-copiar" onclick="copiarParaBiofile()">
+            📋 Copiar datos para Biofile (Tab)
+        </button>
+        <div>
+            <div style="font-size:.75rem;font-weight:600;color:var(--gris);text-transform:uppercase;margin-bottom:6px">Prioridad</div>
+            <div class="prioridad-row" id="modal-pri-row"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-sm btn-llamar" style="flex:1;padding:9px;" onclick="llamarDesdeModal()">📢 Llamar</button>
+            <button class="btn-outline" onclick="cerrarModal()">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const TERMINAL_ID = (() => {
+    let id = localStorage.getItem('terminal_id');
+    if (!id) { id = 'adm-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); localStorage.setItem('terminal_id', id); }
+    return id;
+})();
+
+let moduloActual = localStorage.getItem('modulo_admisiones') || '';
+let pacienteModalData = null;
+let colaActual = [];
+
+// ── Reloj ───────────────────────────────────────────────────────
+function actualizarReloj() {
+    document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(actualizarReloj, 1000);
+actualizarReloj();
+
+// ── Socket ──────────────────────────────────────────────────────
+const socket = io();
+socket.on('connect', () => {
+    document.getElementById('dot-ws').classList.add('ok');
+    socket.emit('join', { tipo: 'admisiones', terminalId: TERMINAL_ID });
+    cargarCola();
+});
+socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('paciente:nuevo',     () => cargarCola());
+socket.on('paciente:prioridad', () => cargarCola());
+socket.on('admision:llamando',  () => cargarCola());
+socket.on('admision:completada',() => cargarCola());
+socket.on('admision:devuelto',  () => cargarCola());
+
+// ── Setup módulo ────────────────────────────────────────────────
+async function cargarModulos() {
+    try {
+        const resp = await fetch('/api/admisiones/config-modulos');
+        const modulos = await resp.json();
+        const sel = document.getElementById('select-modulo');
+        sel.innerHTML = modulos.map(m => `<option value="${m}">${m}</option>`).join('');
+        if (moduloActual) sel.value = moduloActual;
+    } catch {
+        document.getElementById('select-modulo').innerHTML = '<option value="Módulo 1">Módulo 1</option><option value="Módulo 2">Módulo 2</option><option value="Módulo 3">Módulo 3</option>';
+    }
+}
+
+function confirmarModulo() {
+    const sel = document.getElementById('select-modulo').value;
+    if (!sel) return;
+    moduloActual = sel;
+    localStorage.setItem('modulo_admisiones', moduloActual);
+    document.getElementById('modulo-badge').textContent = moduloActual;
+    document.getElementById('overlay-setup').style.display = 'none';
+    cargarCola();
+}
+
+function cambiarModulo() {
+    cargarModulos();
+    document.getElementById('overlay-setup').style.display = 'flex';
+}
+
+// ── Cola ────────────────────────────────────────────────────────
+async function cargarCola() {
+    if (!moduloActual) return;
+    try {
+        const resp = await fetch('/api/admisiones/cola', { headers: { 'X-Terminal-Id': TERMINAL_ID } });
+        colaActual = await resp.json();
+        renderCola();
+    } catch {}
+}
+
+function renderCola() {
+    const espera = colaActual.filter(p => p.estado_admision === 'esperando');
+    const enProceso = colaActual.filter(p => p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual);
+
+    document.getElementById('count-espera').textContent = espera.length;
+    document.getElementById('count-enproceso').textContent = enProceso.length;
+
+    // Render espera
+    const listaEl = document.getElementById('lista-espera');
+    if (!espera.length) {
+        listaEl.innerHTML = '<div class="vacia">No hay pacientes en espera</div>';
+    } else {
+        listaEl.innerHTML = espera.map(p => {
+            const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="pac-card">
+                <div class="pri-dot pri-${p.prioridad}"></div>
+                <div class="pac-info">
+                    <div class="pac-nombre">${p.nombre_completo}</div>
+                    <div class="pac-sub">${p.numero_identificacion} · ${hora}</div>
+                </div>
+                <div class="pac-btns">
+                    <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+                    <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')">📢 Llamar</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // Render en proceso
+    const epEl = document.getElementById('lista-enproceso');
+    if (!enProceso.length) {
+        epEl.innerHTML = '<div class="vacia" style="font-size:.85rem">Ningún paciente en proceso<br>en este módulo</div>';
+    } else {
+        epEl.innerHTML = enProceso.map(p => {
+            const hora = p.hora_llamado_admision ? new Date(p.hora_llamado_admision).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+            return `<div class="enproceso-item">
+                <div class="ep-modulo">${p.modulo_admision || moduloActual}</div>
+                <div class="ep-nombre">${p.nombre_completo}</div>
+                <div class="ep-meta">CC ${p.numero_identificacion} · Llamado ${hora}</div>
+                <div class="ep-btns">
+                    <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+                    <button class="btn-sm btn-admisionar" onclick="admisionarPaciente('${p.id}')">✓ Admisionado</button>
+                    <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">✗ No vino</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+}
+
+// ── Acciones ────────────────────────────────────────────────────
+async function llamarPaciente(id) {
+    try {
+        const resp = await fetch(`/api/admisiones/llamar/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ modulo: moduloActual })
+        });
+        if (!resp.ok) { const d = await resp.json(); alert(d.error === 'estado_invalido' ? 'El paciente ya fue llamado' : d.error); }
+        else cargarCola();
+    } catch {}
+}
+
+async function admisionarPaciente(id) {
+    try {
+        const resp = await fetch(`/api/admisiones/admisionar/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID }
+        });
+        if (resp.ok) { cerrarModal(); cargarCola(); }
+    } catch {}
+}
+
+async function devolverPaciente(id) {
+    try {
+        const resp = await fetch(`/api/admisiones/devolver/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID }
+        });
+        if (resp.ok) { cerrarModal(); cargarCola(); }
+    } catch {}
+}
+
+// ── Modal ───────────────────────────────────────────────────────
+async function verPaciente(id) {
+    const p = colaActual.find(x => x.id === id);
+    if (!p) return;
+    pacienteModalData = p;
+
+    document.getElementById('modal-pac-nombre').textContent = p.nombre_completo;
+
+    const fechaNac = p.fecha_nacimiento ? new Date(p.fecha_nacimiento + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+    const horaLlegada = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+    document.getElementById('modal-datos-grid').innerHTML = `
+        <div class="dato-item"><div class="dato-label">Cédula</div><div class="dato-val">${p.numero_identificacion}</div></div>
+        <div class="dato-item"><div class="dato-label">Tipo</div><div class="dato-val">${p.tipo_identificacion || 'CC'}</div></div>
+        <div class="dato-item full"><div class="dato-label">Nombre completo</div><div class="dato-val">${p.nombre_completo}</div></div>
+        <div class="dato-item"><div class="dato-label">Fecha nacimiento</div><div class="dato-val">${fechaNac}</div></div>
+        <div class="dato-item"><div class="dato-label">Ciudad expedición</div><div class="dato-val">${p.ciudad_expedicion || '—'}</div></div>
+        <div class="dato-item"><div class="dato-label">Hora llegada</div><div class="dato-val">${horaLlegada}</div></div>
+        <div class="dato-item"><div class="dato-label">Estado</div><div class="dato-val">${p.estado_admision}</div></div>
+    `;
+
+    // Prioridad
+    const priRow = document.getElementById('modal-pri-row');
+    priRow.innerHTML = ['normal','media','alta'].map(v =>
+        `<button class="prioridad-btn${p.prioridad===v?' activo':''}" data-val="${v}" onclick="cambiarPrioridadModal('${p.id}','${v}')">${v==='alta'?'🔴 ':v==='media'?'⚡ ':''}${v.charAt(0).toUpperCase()+v.slice(1)}</button>`
+    ).join('');
+
+    // Reset botón copiar
+    const btnCopiar = document.getElementById('btn-copiar');
+    btnCopiar.textContent = '📋 Copiar datos para Biofile (Tab)';
+    btnCopiar.classList.remove('copiado');
+
+    document.getElementById('modal-paciente').classList.add('visible');
+}
+
+async function copiarParaBiofile() {
+    if (!pacienteModalData) return;
+    try {
+        const resp = await fetch(`/api/admisiones/datos-pegado/${pacienteModalData.id}`, {
+            headers: { 'X-Terminal-Id': TERMINAL_ID }
+        });
+        if (!resp.ok) return;
+        const { tabString } = await resp.json();
+        await navigator.clipboard.writeText(tabString);
+        const btn = document.getElementById('btn-copiar');
+        btn.textContent = '✓ Copiado — pegar en Biofile con Ctrl+V';
+        btn.classList.add('copiado');
+    } catch {
+        // Fallback si clipboard API no está disponible
+        const tabString = [
+            pacienteModalData.numero_identificacion,
+            pacienteModalData.ciudad_expedicion || '',
+            pacienteModalData.fecha_nacimiento ? new Date(pacienteModalData.fecha_nacimiento + 'T12:00:00').toLocaleDateString('es-CO') : '',
+            pacienteModalData.primer_apellido || '',
+            pacienteModalData.segundo_apellido || '',
+            pacienteModalData.primer_nombre || '',
+            pacienteModalData.segundo_nombre || ''
+        ].join('\t');
+        prompt('Copie estos datos y péguelos en Biofile:', tabString);
+    }
+}
+
+async function llamarDesdeModal() {
+    if (!pacienteModalData) return;
+    await llamarPaciente(pacienteModalData.id);
+    cerrarModal();
+}
+
+async function cambiarPrioridadModal(id, pri) {
+    try {
+        await fetch(`/api/recepcion/${id}/prioridad`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ prioridad: pri })
+        });
+        // Actualizar estado local
+        if (pacienteModalData) pacienteModalData.prioridad = pri;
+        document.querySelectorAll('#modal-pri-row .prioridad-btn').forEach(b => {
+            b.classList.toggle('activo', b.dataset.val === pri);
+        });
+        cargarCola();
+    } catch {}
+}
+
+function cerrarModal() {
+    document.getElementById('modal-paciente').classList.remove('visible');
+    pacienteModalData = null;
+}
+document.getElementById('modal-paciente').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModal();
+});
+
+// ── Init ────────────────────────────────────────────────────────
+cargarModulos();
+if (moduloActual) {
+    document.getElementById('modulo-badge').textContent = moduloActual;
+    document.getElementById('overlay-setup').style.display = 'none';
+} else {
+    cargarModulos();
+}
+</script>
 </body>
 </html>

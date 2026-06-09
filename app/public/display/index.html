@@ -1,19 +1,364 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Pantalla TV — Turnero</title>
-<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d1b2a;color:white}.card{text-align:center}h1{color:#5bc0eb;font-size:2em}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#555;margin-right:6px}.dot.ok{background:#27ae60}</style>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pantalla TV — Turnero CertiMedic</title>
+<style>
+:root {
+    --fondo: #0a1628;
+    --card:  #0f2240;
+    --card2: #162d52;
+    --azul:  #3b82f6;
+    --verde: #22c55e;
+    --naranja: #f59e0b;
+    --borde: rgba(255,255,255,.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: white; display: flex; flex-direction: column; }
+
+/* Header */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--borde); background: var(--card); flex-shrink: 0; }
+.logo { font-size: 1rem; font-weight: 800; color: var(--azul); letter-spacing: .02em; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: .85rem; color: rgba(255,255,255,.6); }
+#reloj-display { font-size: 1.1rem; font-weight: 700; color: white; }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+.dot-ws.ok { background: var(--verde); box-shadow: 0 0 6px var(--verde); }
+
+/* Layout principal: tres columnas */
+.layout { flex: 1; display: grid; grid-template-columns: 280px 1fr 280px; gap: 1px; background: var(--borde); overflow: hidden; }
+
+/* Columnas laterales */
+.col-lateral { background: var(--card); padding: 16px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.col-titulo { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: rgba(255,255,255,.4); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--borde); }
+
+/* Tarjeta de consultorio / módulo */
+.item-card { background: var(--card2); border-radius: 10px; padding: 12px 14px; margin-bottom: 6px; border: 1.5px solid var(--borde); transition: all .4s; }
+.item-card.activo { border-color: var(--azul); background: #1a3a6e; }
+.item-card.libre { opacity: .45; }
+.item-num { font-size: .72rem; font-weight: 700; color: rgba(255,255,255,.45); text-transform: uppercase; margin-bottom: 3px; }
+.item-nombre { font-size: 1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-nombre.libre { font-size: .85rem; color: rgba(255,255,255,.3); font-style: italic; }
+.item-pro { font-size: .72rem; color: rgba(255,255,255,.45); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Centro - llamado actual */
+.col-centro { background: var(--fondo); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; position: relative; }
+
+/* Animación de llamado */
+.llamado-container { display: flex; flex-direction: column; align-items: center; gap: 16px; animation: fadeIn .4s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+@keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+.llamado-etiqueta { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; color: rgba(255,255,255,.4); }
+.llamado-nombre { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; color: white; line-height: 1.1; animation: pulso 2s ease-in-out infinite; }
+.llamado-destino { font-size: 1.3rem; color: var(--azul); font-weight: 700; }
+.llamado-tipo-badge { font-size: .75rem; padding: 4px 14px; border-radius: 99px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.badge-admision { background: rgba(245,158,11,.15); color: var(--naranja); border: 1.5px solid var(--naranja); }
+.badge-profesional { background: rgba(59,130,246,.15); color: var(--azul); border: 1.5px solid var(--azul); }
+
+/* Cola de espera en centro */
+.cola-siguiente { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.sig-item { background: rgba(255,255,255,.07); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 12px; font-size: .72rem; color: rgba(255,255,255,.5); }
+
+/* Sin llamados */
+.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: .2; }
+.sin-llamado-icono { font-size: 5rem; }
+.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+
+/* Barra de progreso del llamado */
+.progreso-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: var(--azul); transition: width linear; border-radius: 0 3px 0 0; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <h1>Pantalla TV</h1>
-        <p style="color:#aaa">En construcción</p>
-        <div><span class="dot" id="dot"></span><span id="st">Conectando...</span></div>
+
+<div class="header">
+    <div class="logo">🏥 TURNERO CERTIMEDIC</div>
+    <div class="header-right">
+        <span id="reloj-display">--:--:--</span>
+        <div class="dot-ws" id="dot-ws"></div>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const s = io();
-        s.on('connect', () => { document.getElementById('dot').classList.add('ok'); document.getElementById('st').textContent = 'Servidor conectado ✓'; s.emit('join', { tipo: 'display', terminalId: 'test-display' }); });
-        s.on('disconnect', () => { document.getElementById('dot').classList.remove('ok'); document.getElementById('st').textContent = 'Sin conexión'; });
-    </script>
+</div>
+
+<div class="layout">
+    <!-- Consultorios -->
+    <div class="col-lateral" id="col-consultorios">
+        <div class="col-titulo">Consultorios</div>
+        <div id="lista-consultorios"></div>
+    </div>
+
+    <!-- Centro -->
+    <div class="col-centro" id="col-centro">
+        <div class="sin-llamado" id="sin-llamado">
+            <div class="sin-llamado-icono">🔔</div>
+            <div class="sin-llamado-txt">En espera</div>
+        </div>
+        <div class="llamado-container" id="llamado-actual" style="display:none"></div>
+        <div class="progreso-bar" id="progreso-bar" style="width:0"></div>
+        <div class="cola-siguiente" id="cola-siguiente"></div>
+    </div>
+
+    <!-- Módulos admisiones -->
+    <div class="col-lateral" id="col-admisiones">
+        <div class="col-titulo">Admisiones</div>
+        <div id="lista-modulos"></div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Reloj ───────────────────────────────────────────────────────
+function actualizarReloj() {
+    document.getElementById('reloj-display').textContent = new Date().toLocaleTimeString('es-CO');
+}
+setInterval(actualizarReloj, 1000);
+actualizarReloj();
+
+// ── Estado del display ──────────────────────────────────────────
+const estado = {
+    consultorios: {},  // { profesional: { nombre_paciente, consultorio, estado } }
+    modulos: {},       // { 'Módulo 1': { nombre_paciente, estado } }
+    colaCalls: [],     // Queue de anuncios { tipo, nombre_paciente, destino, subtitulo }
+    llamadoActivo: null,
+    progresoTimer: null,
+    progresoStart: null,
+};
+
+const DURACION_LLAMADO = 8000; // ms
+
+// ── Web Audio beeps ─────────────────────────────────────────────
+function beep(frecuencia = 880, duracion = 150) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = frecuencia;
+        gain.gain.setValueAtTime(.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + duracion / 1000);
+        osc.start();
+        osc.stop(ctx.currentTime + duracion / 1000 + .05);
+    } catch {}
+}
+
+function beepDoble() {
+    beep(880, 150);
+    setTimeout(() => beep(1100, 180), 250);
+}
+
+// ── Render consultorios ─────────────────────────────────────────
+function renderConsultorios() {
+    const lista = document.getElementById('lista-consultorios');
+    const items = Object.values(estado.consultorios);
+    if (!items.length) {
+        lista.innerHTML = '<div style="font-size:.8rem;color:rgba(255,255,255,.2);text-align:center;padding:20px">Sin consultorios activos</div>';
+        return;
+    }
+    // Ordenar por consultorio
+    items.sort((a, b) => (a.consultorio || '').localeCompare(b.consultorio || '', undefined, { numeric: true }));
+    lista.innerHTML = items.map(c => {
+        const activo = c.estado === 'en_atencion';
+        const libre = !c.nombre_paciente || c.estado === 'finalizado';
+        return `<div class="item-card ${activo ? 'activo' : ''} ${libre ? 'libre' : ''}">
+            <div class="item-num">Consultorio ${c.consultorio || '—'}</div>
+            <div class="item-nombre ${libre ? 'libre' : ''}">${libre ? '(Libre)' : c.nombre_paciente}</div>
+            <div class="item-pro">${c.profesional || ''}</div>
+        </div>`;
+    }).join('');
+}
+
+// ── Render módulos admisiones ───────────────────────────────────
+function renderModulos() {
+    const lista = document.getElementById('lista-modulos');
+    const items = Object.entries(estado.modulos);
+    if (!items.length) {
+        lista.innerHTML = '<div style="font-size:.8rem;color:rgba(255,255,255,.2);text-align:center;padding:20px">Sin módulos activos</div>';
+        return;
+    }
+    lista.innerHTML = items.map(([modulo, data]) => {
+        const libre = !data || !data.nombre_paciente;
+        return `<div class="item-card ${libre ? 'libre' : 'activo'}">
+            <div class="item-num">${modulo}</div>
+            <div class="item-nombre ${libre ? 'libre' : ''}">${libre ? '(Libre)' : data.nombre_paciente}</div>
+        </div>`;
+    }).join('');
+}
+
+// ── Cola de anuncios ────────────────────────────────────────────
+function encolarLlamado(llamado) {
+    estado.colaCalls.push(llamado);
+    if (!estado.llamadoActivo) procesarSiguiente();
+    renderColaSiguiente();
+}
+
+function procesarSiguiente() {
+    if (!estado.colaCalls.length) {
+        ocultarLlamado();
+        return;
+    }
+    const siguiente = estado.colaCalls.shift();
+    mostrarLlamado(siguiente);
+    renderColaSiguiente();
+}
+
+function mostrarLlamado(llamado) {
+    estado.llamadoActivo = llamado;
+    clearTimeout(estado.progresoTimer);
+
+    const el = document.getElementById('llamado-actual');
+    const sinEl = document.getElementById('sin-llamado');
+    sinEl.style.display = 'none';
+    el.style.display = 'flex';
+
+    const tipoBadge = llamado.tipo === 'admision'
+        ? '<span class="llamado-tipo-badge badge-admision">Admisiones</span>'
+        : '<span class="llamado-tipo-badge badge-profesional">Consultorio</span>';
+
+    el.innerHTML = `
+        ${tipoBadge}
+        <div class="llamado-etiqueta">Pasar a</div>
+        <div class="llamado-nombre">${llamado.nombre_paciente || 'PACIENTE'}</div>
+        <div class="llamado-destino">${llamado.destino || ''}</div>
+    `;
+
+    // Barra de progreso
+    const barra = document.getElementById('progreso-bar');
+    barra.style.transition = 'none';
+    barra.style.width = '100%';
+    setTimeout(() => {
+        barra.style.transition = `width ${DURACION_LLAMADO}ms linear`;
+        barra.style.width = '0%';
+    }, 50);
+
+    beepDoble();
+
+    estado.progresoTimer = setTimeout(procesarSiguiente, DURACION_LLAMADO);
+}
+
+function ocultarLlamado() {
+    estado.llamadoActivo = null;
+    document.getElementById('llamado-actual').style.display = 'none';
+    document.getElementById('sin-llamado').style.display = 'flex';
+    document.getElementById('progreso-bar').style.width = '0';
+}
+
+function renderColaSiguiente() {
+    const el = document.getElementById('cola-siguiente');
+    if (!estado.colaCalls.length) { el.innerHTML = ''; return; }
+    el.innerHTML = estado.colaCalls.map(c =>
+        `<div class="sig-item">⏳ ${c.nombre_paciente}</div>`
+    ).join('');
+}
+
+// ── Socket.io ───────────────────────────────────────────────────
+const socket = io();
+
+socket.on('connect', () => {
+    document.getElementById('dot-ws').classList.add('ok');
+    socket.emit('join', { tipo: 'display', terminalId: 'display-' + Date.now() });
+    cargarEstadoInicial();
+});
+socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+
+// Admisiones llama un paciente
+socket.on('admision:llamando', (p) => {
+    const nombre = p.nombre_completo || [p.primer_nombre, p.primer_apellido].filter(Boolean).join(' ');
+    const modulo = p.modulo_admision || 'Admisiones';
+
+    // Actualizar estado del módulo
+    if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
+    renderModulos();
+
+    encolarLlamado({ tipo: 'admision', nombre_paciente: nombre, destino: modulo });
+});
+
+// Admisiones confirma ingreso a Biofile
+socket.on('admision:completada', (p) => {
+    const modulo = p.modulo_admision;
+    if (modulo && estado.modulos[modulo]) {
+        delete estado.modulos[modulo];
+    }
+    renderModulos();
+});
+
+// Admisiones devuelve paciente a espera
+socket.on('admision:devuelto', (p) => {
+    const modulo = p.modulo_admision;
+    if (modulo && estado.modulos[modulo]) delete estado.modulos[modulo];
+    renderModulos();
+});
+
+// Profesional llama un paciente
+socket.on('asignacion:llamando', (a) => {
+    const nombre = a.nombre_paciente || a.numero_identificacion;
+    const consultorio = a.consultorio || a.consultorio_profesional;
+    const prof = a.nombre_profesional;
+
+    // Registrar en consultorios (pendiente de entrar)
+    if (prof) {
+        estado.consultorios[prof] = {
+            profesional: prof, nombre_paciente: nombre,
+            consultorio, estado: 'llamando'
+        };
+    }
+    renderConsultorios();
+
+    encolarLlamado({
+        tipo: 'profesional',
+        nombre_paciente: nombre,
+        destino: consultorio ? `Consultorio ${consultorio}` : (a.area || 'Consultorio')
+    });
+});
+
+// Profesional pasa a en atención
+socket.on('asignacion:en_atencion', (a) => {
+    const prof = a.nombre_profesional;
+    if (prof && estado.consultorios[prof]) {
+        estado.consultorios[prof].estado = 'en_atencion';
+        estado.consultorios[prof].nombre_paciente = a.nombre_paciente || estado.consultorios[prof].nombre_paciente;
+        estado.consultorios[prof].consultorio = a.consultorio_profesional || estado.consultorios[prof].consultorio;
+    }
+    renderConsultorios();
+});
+
+// Profesional finaliza
+socket.on('asignacion:finalizado', (a) => {
+    const prof = a.nombre_profesional;
+    if (prof && estado.consultorios[prof]) {
+        delete estado.consultorios[prof];
+    }
+    renderConsultorios();
+});
+
+// ── Estado inicial al conectar ──────────────────────────────────
+async function cargarEstadoInicial() {
+    try {
+        const resp = await fetch('/api/admin/estado-display');
+        if (!resp.ok) return;
+        const { consultorios, modulos } = await resp.json();
+
+        // Reconstruir estado de consultorios
+        for (const c of consultorios) {
+            if (c.nombre_profesional) {
+                estado.consultorios[c.nombre_profesional] = {
+                    profesional: c.nombre_profesional,
+                    nombre_paciente: c.nombre_paciente,
+                    consultorio: c.consultorio_profesional,
+                    estado: c.estado
+                };
+            }
+        }
+        // Reconstruir estado de módulos
+        for (const m of modulos) {
+            if (m.modulo_admision) {
+                estado.modulos[m.modulo_admision] = { nombre_paciente: m.nombre_paciente, estado: m.estado_admision };
+            }
+        }
+
+        renderConsultorios();
+        renderModulos();
+    } catch {}
+}
+</script>
 </body>
 </html>

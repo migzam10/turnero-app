@@ -1,41 +1,620 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Recepción — Turnero</title>
-    <style>
-        body { font-family: sans-serif; display: flex; align-items: center;
-               justify-content: center; height: 100vh; margin: 0; background: #f0f4f8; }
-        .card { background: white; padding: 40px; border-radius: 12px;
-                text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1 { color: #1a3a6e; }
-        .estado { margin-top: 16px; font-size: 14px; color: #888; }
-        .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-               background: #ccc; margin-right: 6px; }
-        .dot.ok { background: #27ae60; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recepción — Turnero CertiMedic</title>
+<style>
+:root {
+    --azul: #1a3a6e;
+    --azul2: #2563eb;
+    --verde: #16a34a;
+    --naranja: #d97706;
+    --rojo: #dc2626;
+    --gris: #64748b;
+    --fondo: #f1f5f9;
+    --card: #ffffff;
+    --borde: #e2e8f0;
+    --texto: #1e293b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+.header { background: var(--azul); color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header h1 { font-size: 1.1rem; font-weight: 600; }
+.header-info { display: flex; align-items: center; gap: 16px; font-size: 0.82rem; }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; transition: background .3s; }
+.dot-ws.ok { background: #4ade80; }
+#reloj { font-size: 0.9rem; font-weight: 600; opacity: .9; }
+
+/* Layout */
+.layout { flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 0; overflow: hidden; }
+
+/* Panel izquierdo - scanner/formulario */
+.panel-scan { padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+
+/* Pantalla de espera de escaneo */
+.scan-waiting { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+.scan-icon { font-size: 80px; opacity: .15; }
+.scan-label { font-size: 1.5rem; font-weight: 700; color: var(--azul); }
+.scan-sublabel { color: var(--gris); font-size: 0.9rem; }
+.btn-manual { background: none; border: 2px solid var(--azul2); color: var(--azul2); padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: all .2s; }
+.btn-manual:hover { background: var(--azul2); color: white; }
+
+/* Card de preview tras escaneo */
+.scan-preview { background: var(--card); border-radius: 12px; border: 2px solid var(--azul2); padding: 20px; display: none; flex-direction: column; gap: 14px; }
+.scan-preview.visible { display: flex; }
+.preview-header { display: flex; align-items: center; justify-content: space-between; }
+.preview-titulo { font-weight: 700; color: var(--azul); font-size: 1.05rem; }
+.badge-formato { background: #dbeafe; color: #1d4ed8; font-size: 0.72rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.campo-grupo { display: flex; flex-direction: column; gap: 4px; }
+.campo-grupo.full { grid-column: 1/-1; }
+.campo-label { font-size: 0.72rem; font-weight: 600; color: var(--gris); text-transform: uppercase; letter-spacing: .05em; }
+.campo-input { border: 1.5px solid var(--borde); border-radius: 7px; padding: 7px 10px; font-size: 0.9rem; font-family: inherit; background: white; transition: border .2s; }
+.campo-input:focus { outline: none; border-color: var(--azul2); }
+
+/* Prioridad selector */
+.prioridad-row { display: flex; gap: 10px; }
+.prioridad-btn { flex: 1; padding: 8px; border-radius: 8px; border: 2px solid var(--borde); background: white; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: all .2s; }
+.prioridad-btn[data-val="normal"].activo { border-color: var(--verde); background: #dcfce7; color: var(--verde); }
+.prioridad-btn[data-val="media"].activo { border-color: var(--naranja); background: #fef3c7; color: var(--naranja); }
+.prioridad-btn[data-val="alta"].activo { border-color: var(--rojo); background: #fee2e2; color: var(--rojo); }
+
+/* Botones de acción */
+.btns-accion { display: flex; gap: 10px; }
+.btn-registrar { flex: 1; background: var(--azul); color: white; border: none; border-radius: 8px; padding: 11px 16px; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: background .2s; }
+.btn-registrar:hover { background: #152e57; }
+.btn-registrar:disabled { background: #94a3b8; cursor: default; }
+.btn-cancelar { background: none; border: 2px solid var(--borde); color: var(--gris); border-radius: 8px; padding: 11px 16px; font-size: 0.85rem; cursor: pointer; }
+.btn-cancelar:hover { border-color: var(--rojo); color: var(--rojo); }
+
+/* Mensaje resultado */
+.msg-resultado { border-radius: 10px; padding: 14px 16px; font-weight: 600; display: none; }
+.msg-resultado.ok { background: #dcfce7; color: var(--verde); border: 1.5px solid #86efac; display: block; }
+.msg-resultado.error { background: #fee2e2; color: var(--rojo); border: 1.5px solid #fca5a5; display: block; }
+.msg-resultado.warn { background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d; display: block; }
+
+/* Panel derecho - cola */
+.panel-cola { background: var(--card); border-left: 1px solid var(--borde); display: flex; flex-direction: column; overflow: hidden; }
+.cola-header { padding: 14px 16px; border-bottom: 1px solid var(--borde); display: flex; align-items: center; justify-content: space-between; }
+.cola-titulo { font-weight: 700; font-size: 0.95rem; color: var(--azul); }
+.cola-count { background: var(--azul); color: white; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.cola-lista { flex: 1; overflow-y: auto; padding: 8px; }
+.cola-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; margin-bottom: 4px; cursor: pointer; transition: background .15s; border: 1.5px solid transparent; }
+.cola-item:hover { background: #f8fafc; border-color: var(--borde); }
+.badge-pri { font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 99px; min-width: 48px; text-align: center; }
+.pri-alta { background: #fee2e2; color: var(--rojo); }
+.pri-media { background: #fef3c7; color: #92400e; }
+.pri-normal { background: #f1f5f9; color: var(--gris); }
+.cola-nombre { flex: 1; font-size: 0.85rem; font-weight: 600; }
+.cola-estado { font-size: 0.72rem; color: var(--gris); }
+.estado-esperando { color: #64748b; }
+.estado-llamando { color: var(--naranja); }
+.estado-admisionado { color: var(--verde); }
+
+/* Botón cambio prioridad */
+.btn-pri-change { font-size: 0.7rem; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--borde); background: white; cursor: pointer; color: var(--gris); display: none; }
+.cola-item:hover .btn-pri-change { display: inline; }
+
+/* Input scanner oculto */
+#scan-input { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+/* Modal cambio prioridad */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.visible { display: flex; }
+.modal { background: white; border-radius: 12px; padding: 24px; width: 300px; }
+.modal h3 { font-size: 1rem; color: var(--azul); margin-bottom: 14px; }
+.modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+
+/* Vacío */
+.cola-vacia { text-align: center; padding: 40px 16px; color: var(--gris); font-size: 0.9rem; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <h1>Módulo Recepción</h1>
-        <p>En construcción</p>
-        <div class="estado">
-            <span class="dot" id="dot"></span>
-            <span id="estado-txt">Conectando...</span>
+<input type="text" id="scan-input" autocomplete="off">
+
+<div class="header">
+    <h1>📋 Recepción — Turnero CertiMedic</h1>
+    <div class="header-info">
+        <span id="reloj">--:--</span>
+        <div class="dot-ws" id="dot-ws"></div>
+    </div>
+</div>
+
+<div class="layout">
+    <!-- Panel izquierdo -->
+    <div class="panel-scan">
+        <!-- Estado: esperando escaneo -->
+        <div class="scan-waiting" id="vista-espera">
+            <div class="scan-icon">📷</div>
+            <div class="scan-label">Listo para escanear</div>
+            <div class="scan-sublabel">Escanee la cédula del paciente o ingrese los datos manualmente</div>
+            <button class="btn-manual" onclick="mostrarFormularioManual()">✏️ Ingresar manualmente</button>
+        </div>
+
+        <!-- Preview de datos del escaneo / formulario manual -->
+        <div class="scan-preview" id="vista-preview">
+            <div class="preview-header">
+                <span class="preview-titulo">Datos del paciente</span>
+                <span class="badge-formato" id="badge-formato">MANUAL</span>
+            </div>
+
+            <div class="preview-grid">
+                <div class="campo-grupo">
+                    <label class="campo-label">Número de cédula *</label>
+                    <input class="campo-input" id="f-cedula" placeholder="12345678901" maxlength="20">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Tipo</label>
+                    <select class="campo-input" id="f-tipo">
+                        <option value="CC">Cédula CC</option>
+                        <option value="TI">Tarjeta Identidad TI</option>
+                        <option value="CE">Cédula Extranjería CE</option>
+                        <option value="PA">Pasaporte PA</option>
+                        <option value="RC">Registro Civil RC</option>
+                    </select>
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Primer apellido *</label>
+                    <input class="campo-input" id="f-apellido1" placeholder="GARCIA">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Segundo apellido</label>
+                    <input class="campo-input" id="f-apellido2" placeholder="MARTINEZ">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Primer nombre *</label>
+                    <input class="campo-input" id="f-nombre1" placeholder="JUAN">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Segundo nombre</label>
+                    <input class="campo-input" id="f-nombre2" placeholder="PABLO">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Fecha nacimiento</label>
+                    <input class="campo-input" id="f-fecha" placeholder="DD/MM/YYYY" maxlength="10">
+                </div>
+                <div class="campo-grupo">
+                    <label class="campo-label">Ciudad expedición</label>
+                    <input class="campo-input" id="f-ciudad" placeholder="BARRANQUILLA">
+                </div>
+            </div>
+
+            <div>
+                <div class="campo-label" style="margin-bottom:8px">Prioridad</div>
+                <div class="prioridad-row">
+                    <button class="prioridad-btn activo" data-val="normal" onclick="setPrioridad('normal')">Normal</button>
+                    <button class="prioridad-btn" data-val="media" onclick="setPrioridad('media')">⚡ Media</button>
+                    <button class="prioridad-btn" data-val="alta" onclick="setPrioridad('alta')">🔴 Alta</button>
+                </div>
+            </div>
+
+            <div id="msg-resultado" class="msg-resultado"></div>
+
+            <div class="btns-accion">
+                <button class="btn-registrar" id="btn-registrar" onclick="registrarPaciente()">✓ Registrar paciente</button>
+                <button class="btn-cancelar" onclick="cancelarYEsperar()">Cancelar</button>
+            </div>
         </div>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        socket.on('connect', () => {
-            document.getElementById('dot').classList.add('ok');
-            document.getElementById('estado-txt').textContent = 'Servidor conectado ✓';
-            socket.emit('join', { tipo: 'recepcion', terminalId: 'test-recepcion' });
+
+    <!-- Panel derecho - cola del día -->
+    <div class="panel-cola">
+        <div class="cola-header">
+            <span class="cola-titulo">Cola del día</span>
+            <span class="cola-count" id="cola-count">0</span>
+        </div>
+        <div class="cola-lista" id="cola-lista">
+            <div class="cola-vacia">Sin pacientes registrados hoy</div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal cambio de prioridad -->
+<div class="modal-overlay" id="modal-prioridad">
+    <div class="modal">
+        <h3>Cambiar prioridad</h3>
+        <div style="font-size:.9rem;color:#64748b;margin-bottom:8px" id="modal-nombre-pac"></div>
+        <div class="prioridad-row">
+            <button class="prioridad-btn" data-val="normal" onclick="cambiarPrioridad('normal')">Normal</button>
+            <button class="prioridad-btn" data-val="media" onclick="cambiarPrioridad('media')">⚡ Media</button>
+            <button class="prioridad-btn" data-val="alta" onclick="cambiarPrioridad('alta')">🔴 Alta</button>
+        </div>
+        <div class="modal-btns">
+            <button class="btn-cancelar" style="width:100%" onclick="cerrarModal()">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Configuración terminal ─────────────────────────────────────
+const TERMINAL_ID = (() => {
+    let id = localStorage.getItem('terminal_id');
+    if (!id) { id = 'recv-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); localStorage.setItem('terminal_id', id); }
+    return id;
+})();
+
+// ── Reloj ───────────────────────────────────────────────────────
+function actualizarReloj() {
+    const ahora = new Date();
+    document.getElementById('reloj').textContent = ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(actualizarReloj, 1000);
+actualizarReloj();
+
+// ── Socket.io ───────────────────────────────────────────────────
+const socket = io();
+socket.on('connect', () => {
+    document.getElementById('dot-ws').classList.add('ok');
+    socket.emit('join', { tipo: 'recepcion', terminalId: TERMINAL_ID });
+    cargarCola();
+});
+socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('paciente:nuevo', () => cargarCola());
+socket.on('paciente:prioridad', () => cargarCola());
+socket.on('admision:completada', () => cargarCola());
+
+// ── Estado de la app ────────────────────────────────────────────
+let prioridadActual = 'normal';
+let modoActual = 'espera'; // 'espera' | 'preview'
+let pacienteModalId = null;
+
+// ── Escáner ─────────────────────────────────────────────────────
+const scanInput = document.getElementById('scan-input');
+let scanTimer = null;
+
+// Mantener el foco en el input oculto cuando estamos en modo espera
+function mantenerFocoScanner() {
+    if (modoActual === 'espera') {
+        scanInput.focus();
+    }
+}
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.panel-scan .scan-preview') && !e.target.closest('.modal')) {
+        mantenerFocoScanner();
+    }
+});
+mantenerFocoScanner();
+
+scanInput.addEventListener('blur', () => {
+    if (modoActual === 'espera') {
+        setTimeout(mantenerFocoScanner, 20);
+    }
+});
+
+scanInput.addEventListener('input', () => {
+    clearTimeout(scanTimer);
+    if (scanInput.value.length < 4) return;
+    scanTimer = setTimeout(() => {
+        const raw = scanInput.value;
+        scanInput.value = '';
+        if (raw.length >= 4) procesarEscaneo(raw);
+    }, 200);
+});
+
+scanInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && scanInput.value.length >= 4) {
+        clearTimeout(scanTimer);
+        const raw = scanInput.value;
+        scanInput.value = '';
+        procesarEscaneo(raw);
+        e.preventDefault();
+    }
+});
+
+// ── Parsers de cédula colombiana ────────────────────────────────
+function parsearCedula(raw) {
+    const datos = {};
+
+    // 1. Intentar JSON
+    const rawTrim = raw.trim();
+    if (rawTrim.startsWith('{') || rawTrim.startsWith('[')) {
+        try {
+            const d = rawTrim.startsWith('[') ? JSON.parse(rawTrim)[0] : JSON.parse(rawTrim);
+            return { datos: mapearJSON(d), formato: 'QR/JSON' };
+        } catch {}
+    }
+
+    // 2. Tab-separado (la mayoría de lectores configurados en Colombia)
+    if (raw.includes('\t')) {
+        return { datos: parsearTabs(raw.split('\t')), formato: 'Tab-separado' };
+    }
+
+    // 3. PDF417 binario - campos por posición de bytes
+    // Los lectores USB HID "teclean" los 531 bytes del PDF417
+    // Campos imprimibles empiezan en byte ~48
+    if (raw.length >= 80) {
+        const datosbin = parsearPDF417(raw);
+        if (datosbin.numero_identificacion && datosbin.primer_apellido) {
+            return { datos: datosbin, formato: 'PDF417' };
+        }
+    }
+
+    // 4. Solo número (escaneo incompleto o cédula simple)
+    const soloNum = rawTrim.replace(/\D/g, '');
+    if (soloNum.length >= 6 && soloNum.length <= 12) {
+        return { datos: { numero_identificacion: soloNum }, formato: 'Número', incompleto: true };
+    }
+
+    // 5. Intentar extraer número de cédula de cualquier string
+    const numMatch = raw.match(/\b(\d{6,12})\b/);
+    if (numMatch) {
+        return { datos: { numero_identificacion: numMatch[1] }, formato: 'Extraído', incompleto: true };
+    }
+
+    return { datos: {}, formato: 'Desconocido', incompleto: true };
+}
+
+function parsearTabs(partes) {
+    // Formatos más comunes en Colombia:
+    // Formato A: cedula | ap1 | ap2 | nom1 | nom2 | fecha | ciudad | sexo
+    // Formato B: cedula | ap1 | ap2 | nom1 | nom2 | ciudad | fecha
+    // Formato C: cedula | ap1 | nom1 | ciudad | fecha
+    const p = partes.map(s => limpiarCampo(s));
+    const datos = {};
+
+    if (/^\d{5,12}$/.test(p[0])) {
+        datos.numero_identificacion = p[0];
+        if (p.length >= 5) {
+            datos.primer_apellido = p[1] || '';
+            datos.segundo_apellido = p[2] || '';
+            datos.primer_nombre = p[3] || '';
+            datos.segundo_nombre = p[4] || '';
+        } else if (p.length >= 3) {
+            datos.primer_apellido = p[1] || '';
+            datos.primer_nombre = p[2] || '';
+        }
+        // Detectar fecha y ciudad entre los campos restantes
+        for (let i = 5; i < p.length; i++) {
+            if (!p[i]) continue;
+            if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(p[i]) || /^\d{8}$/.test(p[i])) {
+                datos.fecha_nacimiento = formatearFecha(p[i]);
+            } else if (p[i].length > 3 && /^[A-ZÁÉÍÓÚÑ\s]+$/.test(p[i])) {
+                datos.ciudad_expedicion = p[i];
+            }
+        }
+    }
+    return datos;
+}
+
+function parsearPDF417(raw) {
+    // Posiciones de campos en el stream PDF417 de cédulas colombianas (RNEC)
+    // Los null bytes (\x00) son padding que los lectores pueden omitir
+    const limpio = (s) => s.replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+
+    const datos = {};
+    // Número de identificación: pos 48-57 (10 bytes)
+    if (raw.length > 48) datos.numero_identificacion = limpio(raw.substring(48, 58));
+    // Primer apellido: pos 58-79 (22 bytes)
+    if (raw.length > 58) datos.primer_apellido = limpio(raw.substring(58, 80));
+    // Segundo apellido: pos 80-99 (20 bytes)
+    if (raw.length > 80) datos.segundo_apellido = limpio(raw.substring(80, 100));
+    // Primer nombre: pos 100-119 (20 bytes)
+    if (raw.length > 100) datos.primer_nombre = limpio(raw.substring(100, 120));
+    // Segundo nombre: pos 120-139 (20 bytes)
+    if (raw.length > 120) datos.segundo_nombre = limpio(raw.substring(120, 140));
+    // Fecha nacimiento: pos 140-147 (8 bytes, formato YYYYMMDD)
+    if (raw.length > 140) {
+        const fs = limpio(raw.substring(140, 148));
+        if (/^\d{8}$/.test(fs)) {
+            datos.fecha_nacimiento = `${fs.slice(6,8)}/${fs.slice(4,6)}/${fs.slice(0,4)}`;
+        }
+    }
+    // Ciudad expedición: pos 149-168 (20 bytes)
+    if (raw.length > 149) datos.ciudad_expedicion = limpio(raw.substring(149, 169));
+
+    return datos;
+}
+
+function mapearJSON(d) {
+    return {
+        numero_identificacion: d.cedula || d.numero_identificacion || d.numId || d.id || '',
+        primer_apellido:  d.primer_apellido || d.apellido1 || d.primerApellido || '',
+        segundo_apellido: d.segundo_apellido || d.apellido2 || d.segundoApellido || '',
+        primer_nombre:    d.primer_nombre || d.nombre1 || d.primerNombre || d.nombre || '',
+        segundo_nombre:   d.segundo_nombre || d.nombre2 || d.segundoNombre || '',
+        fecha_nacimiento: d.fecha_nacimiento || d.fechaNacimiento || d.fechaNac || '',
+        ciudad_expedicion: d.ciudad_expedicion || d.ciudadExpedicion || d.ciudad || '',
+    };
+}
+
+function limpiarCampo(s) {
+    return (s || '').replace(/[\x00-\x1F]/g, '').trim().toUpperCase();
+}
+
+function formatearFecha(s) {
+    if (/^\d{8}$/.test(s)) return `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
+    return s;
+}
+
+// ── Procesar escaneo recibido ───────────────────────────────────
+function procesarEscaneo(raw) {
+    const resultado = parsearCedula(raw);
+    mostrarPreview(resultado.datos, resultado.formato);
+}
+
+function mostrarPreview(datos, formato) {
+    modoActual = 'preview';
+    document.getElementById('vista-espera').style.display = 'none';
+    document.getElementById('vista-preview').classList.add('visible');
+    document.getElementById('badge-formato').textContent = formato || 'MANUAL';
+
+    // Llenar campos
+    setVal('f-cedula', datos.numero_identificacion || '');
+    setVal('f-apellido1', datos.primer_apellido || '');
+    setVal('f-apellido2', datos.segundo_apellido || '');
+    setVal('f-nombre1', datos.primer_nombre || '');
+    setVal('f-nombre2', datos.segundo_nombre || '');
+    setVal('f-fecha', datos.fecha_nacimiento || '');
+    setVal('f-ciudad', datos.ciudad_expedicion || '');
+
+    setPrioridad('normal');
+    limpiarMensaje();
+
+    // Foco en cédula si está vacío
+    if (!datos.numero_identificacion) {
+        setTimeout(() => document.getElementById('f-cedula').focus(), 50);
+    }
+}
+
+function mostrarFormularioManual() {
+    mostrarPreview({}, 'MANUAL');
+    setTimeout(() => document.getElementById('f-cedula').focus(), 50);
+}
+
+function setVal(id, val) {
+    document.getElementById(id).value = val;
+}
+
+// ── Prioridad ───────────────────────────────────────────────────
+function setPrioridad(val) {
+    prioridadActual = val;
+    document.querySelectorAll('.prioridad-btn').forEach(b => {
+        b.classList.toggle('activo', b.dataset.val === val);
+    });
+}
+
+// ── Registrar paciente ──────────────────────────────────────────
+async function registrarPaciente() {
+    const cedula = document.getElementById('f-cedula').value.trim().replace(/\D/g,'');
+    const apellido1 = document.getElementById('f-apellido1').value.trim().toUpperCase();
+    const nombre1 = document.getElementById('f-nombre1').value.trim().toUpperCase();
+
+    if (!cedula) { mostrarMsg('Ingrese el número de cédula', 'error'); return; }
+    if (!apellido1) { mostrarMsg('Ingrese el primer apellido', 'error'); return; }
+    if (!nombre1) { mostrarMsg('Ingrese el primer nombre', 'error'); return; }
+
+    const btn = document.getElementById('btn-registrar');
+    btn.disabled = true;
+    btn.textContent = 'Registrando...';
+
+    const body = {
+        numero_identificacion: cedula,
+        tipo_identificacion: document.getElementById('f-tipo').value,
+        primer_apellido: apellido1,
+        segundo_apellido: document.getElementById('f-apellido2').value.trim().toUpperCase(),
+        primer_nombre: nombre1,
+        segundo_nombre: document.getElementById('f-nombre2').value.trim().toUpperCase(),
+        fecha_nacimiento: document.getElementById('f-fecha').value.trim(),
+        ciudad_expedicion: document.getElementById('f-ciudad').value.trim().toUpperCase(),
+        prioridad: prioridadActual
+    };
+
+    try {
+        const resp = await fetch('/api/recepcion/registrar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify(body)
         });
-        socket.on('disconnect', () => {
-            document.getElementById('dot').classList.remove('ok');
-            document.getElementById('estado-txt').textContent = 'Sin conexión';
+        const data = await resp.json();
+
+        if (resp.status === 201) {
+            mostrarMsg(`✓ Paciente registrado correctamente — ${nombre1} ${apellido1}`, 'ok');
+            setTimeout(cancelarYEsperar, 2200);
+        } else if (resp.status === 409) {
+            mostrarMsg(`⚠ El paciente con cédula ${cedula} ya fue registrado hoy`, 'warn');
+        } else {
+            mostrarMsg(`Error: ${data.error || 'Error desconocido'}`, 'error');
+        }
+    } catch {
+        mostrarMsg('Error de conexión con el servidor', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✓ Registrar paciente';
+    }
+}
+
+function cancelarYEsperar() {
+    modoActual = 'espera';
+    document.getElementById('vista-espera').style.display = '';
+    document.getElementById('vista-preview').classList.remove('visible');
+    limpiarMensaje();
+    setTimeout(mantenerFocoScanner, 50);
+}
+
+function mostrarMsg(txt, tipo) {
+    const el = document.getElementById('msg-resultado');
+    el.className = `msg-resultado ${tipo}`;
+    el.textContent = txt;
+}
+function limpiarMensaje() {
+    const el = document.getElementById('msg-resultado');
+    el.className = 'msg-resultado';
+    el.textContent = '';
+}
+
+// ── Cola del día ────────────────────────────────────────────────
+async function cargarCola() {
+    try {
+        const resp = await fetch('/api/recepcion/cola');
+        const lista = await resp.json();
+        renderCola(lista);
+    } catch {}
+}
+
+function renderCola(lista) {
+    const contenedor = document.getElementById('cola-lista');
+    document.getElementById('cola-count').textContent = lista.length;
+
+    if (!lista.length) {
+        contenedor.innerHTML = '<div class="cola-vacia">Sin pacientes registrados hoy</div>';
+        return;
+    }
+
+    contenedor.innerHTML = lista.map(p => {
+        const estadoLabel = {
+            esperando: 'Esperando',
+            llamando_admision: 'Llamado',
+            admisionado: 'Admisionado'
+        }[p.estado_admision] || p.estado_admision;
+
+        const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+
+        return `<div class="cola-item" onclick="abrirModalPrioridad('${p.id}', '${p.nombre_completo}', '${p.prioridad}')">
+            <span class="badge-pri pri-${p.prioridad}">${p.prioridad.toUpperCase()}</span>
+            <span class="cola-nombre">${p.nombre_completo}</span>
+            <span class="cola-estado estado-${p.estado_admision}">${estadoLabel} ${hora}</span>
+        </div>`;
+    }).join('');
+}
+
+// ── Modal prioridad ─────────────────────────────────────────────
+function abrirModalPrioridad(id, nombre, prioridadActualPac) {
+    pacienteModalId = id;
+    document.getElementById('modal-nombre-pac').textContent = nombre;
+    document.querySelectorAll('.modal .prioridad-btn').forEach(b => {
+        b.classList.toggle('activo', b.dataset.val === prioridadActualPac);
+    });
+    document.getElementById('modal-prioridad').classList.add('visible');
+}
+
+async function cambiarPrioridad(nuevaPrioridad) {
+    if (!pacienteModalId) return;
+    try {
+        const resp = await fetch(`/api/recepcion/${pacienteModalId}/prioridad`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ prioridad: nuevaPrioridad })
         });
-    </script>
+        if (resp.ok) { cerrarModal(); cargarCola(); }
+    } catch {}
+}
+
+function cerrarModal() {
+    document.getElementById('modal-prioridad').classList.remove('visible');
+    pacienteModalId = null;
+}
+
+// Cerrar modal al hacer clic fuera
+document.getElementById('modal-prioridad').addEventListener('click', function(e) {
+    if (e.target === this) cerrarModal();
+});
+
+// ── Init ────────────────────────────────────────────────────────
+cargarCola();
+</script>
 </body>
 </html>

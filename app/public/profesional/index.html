@@ -1,19 +1,369 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Profesional — Turnero</title>
-<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f0f4f8}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.1)}h1{color:#1a3a6e}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;margin-right:6px}.dot.ok{background:#27ae60}</style>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profesional — Turnero CertiMedic</title>
+<style>
+:root {
+    --azul: #1a3a6e; --azul2: #2563eb; --verde: #16a34a;
+    --naranja: #d97706; --rojo: #dc2626; --gris: #64748b;
+    --fondo: #f1f5f9; --card: #fff; --borde: #e2e8f0; --texto: #1e293b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); min-height: 100vh; }
+
+/* Header */
+.header { background: var(--azul); color: white; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
+.header-left h1 { font-size: 1rem; font-weight: 600; }
+.header-left .sub { font-size: .78rem; opacity: .75; margin-top: 1px; }
+.header-right { display: flex; align-items: center; gap: 14px; font-size: .82rem; }
+.btn-config { background: rgba(255,255,255,.15); border: none; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: .78rem; }
+.btn-config:hover { background: rgba(255,255,255,.25); }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; }
+.dot-ws.ok { background: #4ade80; }
+#reloj { font-weight: 600; }
+
+/* Setup */
+.overlay-setup { position: fixed; inset: 0; background: rgba(15,23,42,.75); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.setup-card { background: white; border-radius: 14px; padding: 32px; width: 400px; }
+.setup-card h2 { color: var(--azul); margin-bottom: 6px; font-size: 1.2rem; }
+.setup-card p { color: var(--gris); font-size: .88rem; margin-bottom: 20px; }
+.campo-grupo { margin-bottom: 14px; }
+.campo-label { font-size: .75rem; font-weight: 600; color: var(--gris); text-transform: uppercase; display: block; margin-bottom: 5px; }
+.campo-input { width: 100%; padding: 9px 12px; border: 2px solid var(--borde); border-radius: 8px; font-size: .95rem; font-family: inherit; }
+.campo-input:focus { outline: none; border-color: var(--azul2); }
+.sugerencias { list-style: none; border: 1.5px solid var(--borde); border-radius: 8px; max-height: 180px; overflow-y: auto; background: white; display: none; }
+.sugerencias.visible { display: block; }
+.sugerencias li { padding: 8px 12px; cursor: pointer; font-size: .9rem; }
+.sugerencias li:hover { background: #eff6ff; }
+.btn-setup { width: 100%; background: var(--azul); color: white; border: none; border-radius: 8px; padding: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 8px; }
+.btn-setup:hover { background: #152e57; }
+
+/* Contenido principal */
+.main { max-width: 860px; margin: 0 auto; padding: 20px; }
+
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: var(--card); border-radius: 10px; padding: 12px 14px; text-align: center; border: 1.5px solid var(--borde); }
+.stat-num { font-size: 1.6rem; font-weight: 800; }
+.stat-label { font-size: .72rem; color: var(--gris); text-transform: uppercase; font-weight: 600; }
+.stat-pendiente .stat-num { color: var(--gris); }
+.stat-llamando .stat-num { color: var(--naranja); }
+.stat-atencion .stat-num { color: var(--azul2); }
+.stat-finalizado .stat-num { color: var(--verde); }
+
+.seccion-titulo { font-weight: 700; font-size: .9rem; color: var(--azul); margin-bottom: 10px; }
+
+/* Paciente card */
+.pac-card { background: var(--card); border-radius: 10px; border: 1.5px solid var(--borde); padding: 14px; margin-bottom: 10px; transition: all .2s; }
+.pac-card.estado-en_atencion { border-color: var(--azul2); background: #f0f7ff; }
+.pac-card.estado-llamando { border-color: var(--naranja); background: #fffbeb; }
+.pac-card.bloqueado { opacity: .65; }
+
+.pac-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pri-badge { font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.pri-alta { background: #fee2e2; color: var(--rojo); }
+.pri-media { background: #fef3c7; color: #92400e; }
+.pri-normal { background: #f1f5f9; color: var(--gris); }
+
+.pac-nombre { font-weight: 700; font-size: .95rem; flex: 1; }
+.pac-area { font-size: .75rem; background: #dbeafe; color: var(--azul2); padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.estado-badge { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.eb-pendiente { background: #f1f5f9; color: var(--gris); }
+.eb-llamando { background: #fef3c7; color: #92400e; }
+.eb-en_atencion { background: #dbeafe; color: var(--azul2); }
+
+.pac-meta { font-size: .78rem; color: var(--gris); margin-bottom: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
+.bloqueo-aviso { font-size: .78rem; color: var(--naranja); background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 5px 10px; margin-bottom: 8px; }
+
+.pac-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-accion { padding: 7px 16px; border-radius: 7px; border: none; font-size: .82rem; font-weight: 700; cursor: pointer; transition: all .2s; }
+.btn-llamar   { background: var(--azul); color: white; }
+.btn-llamar:hover   { background: #152e57; }
+.btn-atencion { background: var(--verde); color: white; }
+.btn-atencion:hover { background: #15803d; }
+.btn-finalizar { background: #7c3aed; color: white; }
+.btn-finalizar:hover { background: #6d28d9; }
+.btn-cancelar-ll { background: #fef9c3; color: #854d0e; border: 1.5px solid #fde047; }
+.btn-cancelar-ll:hover { background: #fef08a; }
+.btn-accion:disabled { opacity: .45; cursor: default; }
+
+.vacia { text-align: center; padding: 40px; color: var(--gris); }
+
+/* Temporizador en atención */
+.timer-atencion { font-size: .78rem; color: var(--azul2); font-weight: 600; background: #dbeafe; padding: 2px 8px; border-radius: 6px; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <h1>Módulo Profesional</h1>
-        <p>En construcción</p>
-        <div><span class="dot" id="dot"></span><span id="st">Conectando...</span></div>
+
+<!-- Setup -->
+<div class="overlay-setup" id="overlay-setup">
+    <div class="setup-card">
+        <h2>👨‍⚕️ Módulo Profesional</h2>
+        <p>Configure sus datos de acceso. El nombre debe coincidir exactamente con Biofile.</p>
+        <div class="campo-grupo">
+            <label class="campo-label">Nombre en Biofile *</label>
+            <input class="campo-input" id="input-profesional" placeholder="Ej: KENDY ZABALETA" autocomplete="off" oninput="buscarProfesional(this.value)" onblur="setTimeout(()=>document.getElementById('sugerencias').classList.remove('visible'),200)">
+            <ul class="sugerencias" id="sugerencias"></ul>
+        </div>
+        <div class="campo-grupo">
+            <label class="campo-label">Número de consultorio *</label>
+            <input class="campo-input" id="input-consultorio" placeholder="Ej: 5" maxlength="10">
+        </div>
+        <button class="btn-setup" onclick="confirmarSetup()">Entrar al módulo</button>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const s = io();
-        s.on('connect', () => { document.getElementById('dot').classList.add('ok'); document.getElementById('st').textContent = 'Servidor conectado ✓'; s.emit('join', { tipo: 'profesional', terminalId: 'test-profesional' }); });
-        s.on('disconnect', () => { document.getElementById('dot').classList.remove('ok'); document.getElementById('st').textContent = 'Sin conexión'; });
-    </script>
+</div>
+
+<div class="header">
+    <div class="header-left">
+        <div class="h1" id="header-profesional" style="font-weight:700;font-size:1rem">—</div>
+        <div class="sub" id="header-consultorio">Consultorio —</div>
+    </div>
+    <div class="header-right">
+        <span id="reloj">--:--</span>
+        <button class="btn-config" onclick="abrirSetup()">⚙ Cambiar</button>
+        <div class="dot-ws" id="dot-ws"></div>
+    </div>
+</div>
+
+<div class="main">
+    <div class="stats-row">
+        <div class="stat-card stat-pendiente"><div class="stat-num" id="cnt-pendiente">0</div><div class="stat-label">Pendientes</div></div>
+        <div class="stat-card stat-llamando"><div class="stat-num" id="cnt-llamando">0</div><div class="stat-label">Llamando</div></div>
+        <div class="stat-card stat-atencion"><div class="stat-num" id="cnt-atencion">0</div><div class="stat-label">En atención</div></div>
+        <div class="stat-card stat-finalizado"><div class="stat-num" id="cnt-finalizado">0</div><div class="stat-label">Finalizados hoy</div></div>
+    </div>
+
+    <div id="lista-asignaciones"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const TERMINAL_ID = (() => {
+    let id = localStorage.getItem('terminal_id');
+    if (!id) { id = 'prof-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); localStorage.setItem('terminal_id', id); }
+    return id;
+})();
+
+let profesionalActual = localStorage.getItem('profesional_nombre') || '';
+let consultorioActual = localStorage.getItem('profesional_consultorio') || '';
+let asignaciones = [];
+let timerReloj = null;
+let contadorFinalizado = 0;
+
+function actualizarReloj() {
+    document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(actualizarReloj, 1000);
+actualizarReloj();
+
+const socket = io();
+socket.on('connect', () => {
+    document.getElementById('dot-ws').classList.add('ok');
+    if (profesionalActual) {
+        socket.emit('join', { tipo: 'profesional', profesional: profesionalActual, terminalId: TERMINAL_ID, consultorio: consultorioActual });
+        cargarAsignaciones();
+    }
+});
+socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('asignacion:llamando',    () => cargarAsignaciones());
+socket.on('asignacion:en_atencion', () => cargarAsignaciones());
+socket.on('asignacion:finalizado',  () => cargarAsignaciones());
+socket.on('extension:sync',         () => cargarAsignaciones());
+
+// ── Setup ───────────────────────────────────────────────────────
+async function buscarProfesional(texto) {
+    const lista = document.getElementById('sugerencias');
+    if (texto.length < 2) { lista.classList.remove('visible'); return; }
+    try {
+        const resp = await fetch('/api/profesional/listado-profesionales');
+        const todos = await resp.json();
+        const filtrados = todos.filter(n => n.toUpperCase().includes(texto.toUpperCase()));
+        if (filtrados.length) {
+            lista.innerHTML = filtrados.map(n => `<li onclick="seleccionarProf('${n}')">${n}</li>`).join('');
+            lista.classList.add('visible');
+        } else {
+            lista.classList.remove('visible');
+        }
+    } catch {}
+}
+
+function seleccionarProf(nombre) {
+    document.getElementById('input-profesional').value = nombre;
+    document.getElementById('sugerencias').classList.remove('visible');
+}
+
+function confirmarSetup() {
+    const nombre = document.getElementById('input-profesional').value.trim().toUpperCase();
+    const consultorio = document.getElementById('input-consultorio').value.trim();
+    if (!nombre) { alert('Ingrese su nombre como aparece en Biofile'); return; }
+    if (!consultorio) { alert('Ingrese el número de consultorio'); return; }
+
+    profesionalActual = nombre;
+    consultorioActual = consultorio;
+    localStorage.setItem('profesional_nombre', profesionalActual);
+    localStorage.setItem('profesional_consultorio', consultorioActual);
+
+    document.getElementById('header-profesional').textContent = profesionalActual;
+    document.getElementById('header-consultorio').textContent = `Consultorio ${consultorioActual}`;
+    document.getElementById('overlay-setup').style.display = 'none';
+
+    socket.emit('join', { tipo: 'profesional', profesional: profesionalActual, terminalId: TERMINAL_ID, consultorio: consultorioActual });
+    cargarAsignaciones();
+}
+
+function abrirSetup() {
+    document.getElementById('input-profesional').value = profesionalActual;
+    document.getElementById('input-consultorio').value = consultorioActual;
+    document.getElementById('overlay-setup').style.display = 'flex';
+}
+
+// ── Asignaciones ────────────────────────────────────────────────
+async function cargarAsignaciones() {
+    if (!profesionalActual) return;
+    try {
+        const resp = await fetch(`/api/profesional/asignaciones?profesional=${encodeURIComponent(profesionalActual)}`, {
+            headers: { 'X-Terminal-Id': TERMINAL_ID }
+        });
+        asignaciones = await resp.json();
+
+        // También obtener finalizados del día
+        const respFin = await fetch(`/api/admin/resumen-dia`);
+        const resumen = await respFin.json();
+
+        renderAsignaciones();
+    } catch {}
+}
+
+function renderAsignaciones() {
+    const lista = document.getElementById('lista-asignaciones');
+
+    const pendientes = asignaciones.filter(a => a.estado === 'pendiente');
+    const llamando   = asignaciones.filter(a => a.estado === 'llamando');
+    const enAtencion = asignaciones.filter(a => a.estado === 'en_atencion');
+
+    document.getElementById('cnt-pendiente').textContent = pendientes.length;
+    document.getElementById('cnt-llamando').textContent  = llamando.length;
+    document.getElementById('cnt-atencion').textContent  = enAtencion.length;
+
+    if (!asignaciones.length) {
+        lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px">🕐</div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
+        return;
+    }
+
+    const secciones = [];
+
+    // En atención primero
+    if (enAtencion.length) {
+        secciones.push(`<div class="seccion-titulo">🔵 En atención (${enAtencion.length})</div>`);
+        secciones.push(enAtencion.map(a => renderCard(a)).join(''));
+    }
+    // Llamando
+    if (llamando.length) {
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">🟡 Llamando (${llamando.length})</div>`);
+        secciones.push(llamando.map(a => renderCard(a)).join(''));
+    }
+    // Pendientes
+    if (pendientes.length) {
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">⏳ Pendientes (${pendientes.length})</div>`);
+        secciones.push(pendientes.map(a => renderCard(a)).join(''));
+    }
+
+    lista.innerHTML = secciones.join('');
+}
+
+function renderCard(a) {
+    const nombreStr = a.nombre_completo || a.numero_identificacion;
+    const tiempoLlegada = a.hora_llegada_biofile
+        ? new Date(a.hora_llegada_biofile).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        : '—';
+
+    let estadoBadge = '';
+    if (a.estado === 'pendiente') estadoBadge = '<span class="estado-badge eb-pendiente">Pendiente</span>';
+    if (a.estado === 'llamando')  estadoBadge = '<span class="estado-badge eb-llamando">Llamando...</span>';
+    if (a.estado === 'en_atencion') estadoBadge = '<span class="estado-badge eb-en_atencion">En atención</span>';
+
+    let timerStr = '';
+    if (a.estado === 'en_atencion' && a.hora_en_atencion) {
+        const mins = Math.floor((Date.now() - new Date(a.hora_en_atencion)) / 60000);
+        timerStr = `<span class="timer-atencion">${mins}min en atención</span>`;
+    }
+
+    let bloqueoBanner = '';
+    if (a.bloqueado && a.estado === 'pendiente') {
+        bloqueoBanner = `<div class="bloqueo-aviso">⏳ En atención con ${a.bloqueado_por || 'otro profesional'}</div>`;
+    }
+
+    let botones = '';
+    if (a.bloqueado && a.estado === 'pendiente') {
+        botones = `<button class="btn-accion btn-llamar" disabled title="El paciente está siendo atendido">📢 Llamar</button>`;
+    } else if (a.estado === 'pendiente') {
+        botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">📢 Llamar</button>`;
+    } else if (a.estado === 'llamando') {
+        botones = `
+            <button class="btn-accion btn-atencion" onclick="accion('en-atencion','${a.id}')">✓ En Atención</button>
+            <button class="btn-accion btn-cancelar-ll" onclick="cancelarLlamado('${a.id}')">✗ Cancelar</button>`;
+    } else if (a.estado === 'en_atencion') {
+        botones = `<button class="btn-accion btn-finalizar" onclick="accion('finalizar','${a.id}')">✓ Finalizar</button>`;
+    }
+
+    return `<div class="pac-card estado-${a.estado}${a.bloqueado && a.estado === 'pendiente' ? ' bloqueado' : ''}">
+        <div class="pac-top">
+            <span class="pri-badge pri-${a.prioridad || 'normal'}">${(a.prioridad || 'normal').toUpperCase()}</span>
+            <span class="pac-nombre">${nombreStr}</span>
+            <span class="pac-area">${a.area || ''}</span>
+            ${estadoBadge}
+            ${timerStr}
+        </div>
+        <div class="pac-meta">
+            <span>CC ${a.numero_identificacion}</span>
+            ${tiempoLlegada !== '—' ? `<span>Llegó: ${tiempoLlegada}</span>` : ''}
+        </div>
+        ${bloqueoBanner}
+        <div class="pac-btns">${botones}</div>
+    </div>`;
+}
+
+async function accion(tipo, id) {
+    try {
+        const resp = await fetch(`/api/profesional/${tipo}/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ profesional: profesionalActual, consultorio: consultorioActual })
+        });
+        if (!resp.ok) {
+            const d = await resp.json();
+            if (d.error === 'estado_invalido') cargarAsignaciones();
+        } else {
+            cargarAsignaciones();
+        }
+    } catch {}
+}
+
+async function cancelarLlamado(id) {
+    // Devolver a pendiente: usamos el mismo endpoint con estado anterior si existe,
+    // o simplemente recargamos para reflejar el estado real
+    try {
+        await fetch(`/api/profesional/cancelar-llamado/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ profesional: profesionalActual })
+        });
+    } catch {}
+    cargarAsignaciones();
+}
+
+// ── Init ────────────────────────────────────────────────────────
+if (profesionalActual && consultorioActual) {
+    document.getElementById('header-profesional').textContent = profesionalActual;
+    document.getElementById('header-consultorio').textContent = `Consultorio ${consultorioActual}`;
+    document.getElementById('overlay-setup').style.display = 'none';
+} else {
+    document.getElementById('overlay-setup').style.display = 'flex';
+}
+
+// Actualizar timers de atención cada minuto
+setInterval(() => { if (asignaciones.some(a => a.estado === 'en_atencion')) renderAsignaciones(); }, 60000);
+</script>
 </body>
 </html>

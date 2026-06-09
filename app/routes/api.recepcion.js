@@ -47,13 +47,16 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
                  primer_apellido, segundo_apellido, ciudad_expedicion, fecha_nacimiento,
                  prioridad, terminal_recepcion_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,
+                     CASE WHEN $8 = '' THEN NULL ELSE TO_DATE($8, 'DD/MM/YYYY') END,
+                     $9,$10)
              ON CONFLICT (fecha, numero_identificacion) DO NOTHING
              RETURNING *`,
             [numero_identificacion, tipo_identificacion,
-             primer_nombre, segundo_nombre || null,
-             primer_apellido, segundo_apellido || null,
-             ciudad_expedicion || null, fecha_nacimiento || null,
+             primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
+             primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
+             ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
+             fecha_nacimiento || '',
              prioridad, req.terminalId]
         );
 
@@ -73,6 +76,32 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         return res.status(201).json(rows[0]);
     } catch (err) {
         console.error('[recepcion/registrar]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// PATCH /api/recepcion/:id/prioridad
+router.patch('/:id/prioridad', validarTerminalId, async (req, res) => {
+    const { prioridad } = req.body;
+    if (!['alta', 'media', 'normal'].includes(prioridad)) {
+        return res.status(400).json({ error: 'prioridad inválida' });
+    }
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE pacientes_cola SET prioridad = $1, updated_at = NOW()
+             WHERE id = $2 AND fecha = CURRENT_DATE
+             RETURNING *`,
+            [prioridad, req.params.id]
+        );
+        if (rowCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
+
+        const io = req.app.get('io');
+        io.to('recepcion').emit('paciente:prioridad', rows[0]);
+        io.to('admisiones').emit('paciente:prioridad', rows[0]);
+
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[recepcion/prioridad]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });

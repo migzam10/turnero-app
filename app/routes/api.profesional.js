@@ -4,7 +4,7 @@ const { validarTerminalId } = require('../middleware/validar');
 
 const router = Router();
 
-// GET /api/profesional/asignaciones?profesional=KENDY
+// GET /api/profesional/asignaciones?profesional=KENDY+ZABALETA
 router.get('/asignaciones', validarTerminalId, async (req, res) => {
     const { profesional } = req.query;
     if (!profesional) {
@@ -14,10 +14,13 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
         const { rows } = await query(
             `SELECT
                 ap.id, ap.numero_identificacion,
-                pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
-                pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,'') AS nombre_completo,
-                pc.prioridad,
-                ap.area, ap.columna_header, ap.estado,
+                COALESCE(
+                    pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
+                    pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
+                    ap.numero_identificacion
+                ) AS nombre_completo,
+                COALESCE(pc.prioridad, 'normal') AS prioridad,
+                ap.area, ap.columna_header, ap.estado, ap.consultorio_profesional,
                 ap.hora_llegada_biofile, ap.hora_llamado,
                 ap.hora_en_atencion, ap.hora_finalizado,
                 EXISTS (
@@ -39,7 +42,11 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
                AND pc.fecha = CURRENT_DATE
              WHERE ap.fecha = CURRENT_DATE
                AND ap.nombre_profesional = $1
-             ORDER BY ap.created_at`,
+               AND ap.estado <> 'finalizado'
+             ORDER BY
+                 CASE ap.estado WHEN 'en_atencion' THEN 1 WHEN 'llamando' THEN 2 ELSE 3 END,
+                 CASE COALESCE(pc.prioridad,'normal') WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+                 ap.hora_llegada_biofile`,
             [profesional]
         );
         return res.json(rows);
@@ -49,25 +56,51 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
     }
 });
 
+// GET /api/profesional/listado-profesionales
+router.get('/listado-profesionales', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT DISTINCT nombre_profesional FROM asignaciones_profesionales
+             WHERE fecha = CURRENT_DATE ORDER BY nombre_profesional`
+        );
+        return res.json(rows.map(r => r.nombre_profesional));
+    } catch (err) {
+        console.error('[profesional/listado-profesionales]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // POST /api/profesional/llamar/:id
 router.post('/llamar/:id', validarTerminalId, async (req, res) => {
-    const { profesional } = req.body;
+    const { profesional, consultorio } = req.body;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
         const { rows, rowCount } = await query(
             `UPDATE asignaciones_profesionales
-             SET estado = 'llamando', hora_llamado = NOW(), updated_at = NOW()
+             SET estado = 'llamando', hora_llamado = NOW(),
+                 consultorio_profesional = $2, updated_at = NOW()
              WHERE id = $1 AND estado = 'pendiente'
              RETURNING *`,
-            [req.params.id]
+            [req.params.id, consultorio || null]
         );
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
 
-        const io = req.app.get('io');
-        io.to(`profesional:${profesional}`).emit('asignacion:llamando', rows[0]);
-        io.to('display').emit('asignacion:llamando', rows[0]);
+        // Obtener nombre del paciente para el display
+        const { rows: conNombre } = await query(
+            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+             FROM asignaciones_profesionales ap
+             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             WHERE ap.id = $1`,
+            [req.params.id]
+        );
 
-        return res.json(rows[0]);
+        const payload = { ...rows[0], nombre_paciente: conNombre[0]?.nombre_paciente, consultorio };
+
+        const io = req.app.get('io');
+        io.to(`profesional:${profesional}`).emit('asignacion:llamando', payload);
+        io.to('display').emit('asignacion:llamando', payload);
+
+        return res.json(payload);
     } catch (err) {
         console.error('[profesional/llamar]', err);
         return res.status(500).json({ error: 'db_error' });
@@ -76,11 +109,46 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
 
 // POST /api/profesional/en-atencion/:id
 router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
+    const { profesional, consultorio } = req.body;
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE asignaciones_profesionales
+             SET estado = 'en_atencion', hora_en_atencion = NOW(),
+                 consultorio_profesional = COALESCE($2, consultorio_profesional), updated_at = NOW()
+             WHERE id = $1 AND estado = 'llamando'
+             RETURNING *`,
+            [req.params.id, consultorio || null]
+        );
+        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+
+        const { rows: conNombre } = await query(
+            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+             FROM asignaciones_profesionales ap
+             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             WHERE ap.id = $1`,
+            [req.params.id]
+        );
+
+        const payload = { ...rows[0], nombre_paciente: conNombre[0]?.nombre_paciente };
+
+        const io = req.app.get('io');
+        if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:en_atencion', payload);
+        io.to('display').emit('asignacion:en_atencion', payload);
+
+        return res.json(payload);
+    } catch (err) {
+        console.error('[profesional/en-atencion]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// POST /api/profesional/cancelar-llamado/:id
+router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
     const { profesional } = req.body;
     try {
         const { rows, rowCount } = await query(
             `UPDATE asignaciones_profesionales
-             SET estado = 'en_atencion', hora_en_atencion = NOW(), updated_at = NOW()
+             SET estado = 'pendiente', hora_llamado = NULL, updated_at = NOW()
              WHERE id = $1 AND estado = 'llamando'
              RETURNING *`,
             [req.params.id]
@@ -88,12 +156,11 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
 
         const io = req.app.get('io');
-        if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:en_atencion', rows[0]);
-        io.to('display').emit('asignacion:en_atencion', rows[0]);
+        if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:cancelado', rows[0]);
 
         return res.json(rows[0]);
     } catch (err) {
-        console.error('[profesional/en-atencion]', err);
+        console.error('[profesional/cancelar-llamado]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });

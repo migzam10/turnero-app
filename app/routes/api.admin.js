@@ -246,6 +246,34 @@ router.get('/reporte-rango', async (req, res) => {
     }
 });
 
+// ── Estado actual del display (para reconexión) ───────────────
+
+router.get('/estado-display', async (req, res) => {
+    try {
+        const { rows: consultorios } = await query(
+            `SELECT ap.nombre_profesional, ap.consultorio_profesional, ap.estado,
+                    COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+             FROM asignaciones_profesionales ap
+             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             WHERE ap.fecha = CURRENT_DATE AND ap.estado IN ('llamando','en_atencion')
+             ORDER BY ap.nombre_profesional`
+        );
+        const { rows: modulos } = await query(
+            `SELECT modulo_admision, estado_admision,
+                    primer_nombre || ' ' || primer_apellido AS nombre_paciente
+             FROM pacientes_cola
+             WHERE fecha = CURRENT_DATE
+               AND estado_admision IN ('llamando_admision')
+               AND modulo_admision IS NOT NULL
+             ORDER BY hora_llamado_admision`
+        );
+        return res.json({ consultorios, modulos });
+    } catch (err) {
+        console.error('[admin/estado-display]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // ── Log de eventos ────────────────────────────────────────────
 
 router.get('/eventos-log', async (req, res) => {
