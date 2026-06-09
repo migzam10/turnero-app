@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 280px;
+      width: 260px;
       font-family: system-ui, sans-serif;
       font-size: 13px;
       background: #f5f5f5;
@@ -27,8 +27,8 @@
       font-size: 11px;
       font-weight: 600;
     }
-    .badge.ok  { background: #43a047; }
-    .badge.err { background: #e53935; }
+    .badge.ok   { background: #43a047; }
+    .badge.err  { background: #e53935; }
     .badge.idle { background: #888; }
 
     section { padding: 10px 12px; border-bottom: 1px solid #ddd; }
@@ -48,37 +48,25 @@
     }
     .stat-box .num { font-size: 20px; font-weight: 700; }
     .stat-box .lbl { font-size: 10px; color: #666; margin-top: 2px; }
-    .num.new   { color: #1565c0; }
-    .num.upd   { color: #43a047; }
-    .num.err   { color: #e53935; }
+    .num.new { color: #1565c0; }
+    .num.upd { color: #43a047; }
+    .num.err { color: #e53935; }
 
     .last-sync { font-size: 11px; color: #666; margin-top: 8px; text-align: center; }
 
-    label { display: block; font-size: 11px; color: #555; margin-bottom: 3px; margin-top: 8px; }
-    label:first-child { margin-top: 0; }
-    input[type=text], input[type=password] {
-      width: 100%;
-      padding: 5px 7px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    input:focus { outline: none; border-color: #1565c0; }
-
-    .row { display: flex; gap: 6px; margin-top: 10px; }
     button {
-      flex: 1;
-      padding: 6px;
+      width: 100%;
+      margin-top: 10px;
+      padding: 7px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
+      background: #1565c0;
+      color: #fff;
     }
-    .btn-save  { background: #1565c0; color: #fff; }
-    .btn-sync  { background: #e8f0fe; color: #1565c0; }
-    .btn-save:hover { background: #0d47a1; }
-    .btn-sync:hover { background: #d0e2fc; }
+    button:hover { background: #0d47a1; }
 
     .msg {
       font-size: 11px;
@@ -103,17 +91,7 @@
       <div class="stat-box"><div class="num err" id="s-err">—</div><div class="lbl">Errores</div></div>
     </div>
     <div class="last-sync" id="last-sync">Sin sincronizaciones aún</div>
-  </section>
-
-  <section>
-    <label>URL del servidor</label>
-    <input type="text" id="server-url" placeholder="http://192.168.1.x:3000">
-    <label>Secret de extensión</label>
-    <input type="password" id="secret" placeholder="••••••••">
-    <div class="row">
-      <button class="btn-save" id="btn-save">Guardar</button>
-      <button class="btn-sync" id="btn-sync">Sync ahora</button>
-    </div>
+    <button id="btn-sync">Sincronizar ahora</button>
     <div class="msg" id="msg"></div>
   </section>
 

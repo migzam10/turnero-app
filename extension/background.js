@@ -1,7 +1,11 @@
-const INTERVALO_MIN = 1;
+const CONFIG = {
+    SERVER_URL: 'http://TU_IP_SERVIDOR:3000',
+    EXTENSION_SECRET: 'cambiar_este_secreto_en_produccion',
+    INTERVALO_MIN: 1
+};
 
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.alarms.create('sync', { periodInMinutes: INTERVALO_MIN });
+    chrome.alarms.create('sync', { periodInMinutes: CONFIG.INTERVALO_MIN });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -13,17 +17,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     ejecutarSync().then(sendResponse).catch(err => sendResponse({ error: err.message }));
     return true;
 });
-
-async function getConfig() {
-    return new Promise(resolve => {
-        chrome.storage.local.get(['serverUrl', 'extensionSecret'], (data) => {
-            resolve({
-                serverUrl: data.serverUrl || '',
-                extensionSecret: data.extensionSecret || ''
-            });
-        });
-    });
-}
 
 async function getTerminalId() {
     return new Promise(resolve => {
@@ -37,11 +30,8 @@ async function getTerminalId() {
 }
 
 async function ejecutarSync() {
-    const { serverUrl, extensionSecret } = await getConfig();
-    if (!serverUrl || !extensionSecret) return { error: 'Configurá la URL y el secret en el popup' };
-
     const tabs = await chrome.tabs.query({ url: '*://ipscertimedic.biofile.com.co/*AtencionesSeguimiento*' });
-    if (tabs.length === 0) return { error: 'No hay pestaña de Biofile abierta' };
+    if (tabs.length === 0) return { error: 'No hay pestaña de Biofile abierta en AtencionesSeguimiento' };
 
     const respuesta = await new Promise(resolve => {
         chrome.tabs.sendMessage(tabs[0].id, { tipo: 'SOLICITAR_DATOS' }, (r) => {
@@ -49,13 +39,14 @@ async function ejecutarSync() {
         });
     });
 
-    if (!respuesta || !respuesta.pacientes?.length) return { error: 'Sin pacientes en Biofile' };
+    if (!respuesta) return { error: 'Content script no responde — recargá la pestaña de Biofile' };
+    if (!respuesta.pacientes?.length) return { error: `Sin pacientes en la tabla (loginName: ${respuesta.loginName || 'no encontrado'})` };
 
-    const res = await fetch(`${serverUrl}/api/extension/sync`, {
+    const res = await fetch(`${CONFIG.SERVER_URL}/api/extension/sync`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-extension-secret': extensionSecret
+            'x-extension-secret': CONFIG.EXTENSION_SECRET
         },
         body: JSON.stringify({
             loginName: respuesta.loginName,
