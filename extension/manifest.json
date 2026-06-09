@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Turnero CertiMedic — Biofile Sync",
+  "version": "1.0.0",
+  "description": "Sincroniza pacientes de Biofile con el sistema de turnos",
+  "permissions": ["alarms", "storage"],
+  "host_permissions": [
+    "http://ipscertimedic.biofile.com.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://ipscertimedic.biofile.com.co/*AtencionesSeguimiento*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Turnero CertiMedic"
+  }
+}

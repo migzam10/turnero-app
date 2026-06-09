@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Recepción — Turnero</title>
+    <style>
+        body { font-family: sans-serif; display: flex; align-items: center;
+               justify-content: center; height: 100vh; margin: 0; background: #f0f4f8; }
+        .card { background: white; padding: 40px; border-radius: 12px;
+                text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #1a3a6e; }
+        .estado { margin-top: 16px; font-size: 14px; color: #888; }
+        .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+               background: #ccc; margin-right: 6px; }
+        .dot.ok { background: #27ae60; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Módulo Recepción</h1>
+        <p>En construcción</p>
+        <div class="estado">
+            <span class="dot" id="dot"></span>
+            <span id="estado-txt">Conectando...</span>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        socket.on('connect', () => {
+            document.getElementById('dot').classList.add('ok');
+            document.getElementById('estado-txt').textContent = 'Servidor conectado ✓';
+            socket.emit('join', { tipo: 'recepcion', terminalId: 'test-recepcion' });
+        });
+        socket.on('disconnect', () => {
+            document.getElementById('dot').classList.remove('ok');
+            document.getElementById('estado-txt').textContent = 'Sin conexión';
+        });
+    </script>
+</body>
+</html>

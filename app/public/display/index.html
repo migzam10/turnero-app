@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Pantalla TV — Turnero</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0d1b2a;color:white}.card{text-align:center}h1{color:#5bc0eb;font-size:2em}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#555;margin-right:6px}.dot.ok{background:#27ae60}</style>
+</head>
+<body>
+    <div class="card">
+        <h1>Pantalla TV</h1>
+        <p style="color:#aaa">En construcción</p>
+        <div><span class="dot" id="dot"></span><span id="st">Conectando...</span></div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const s = io();
+        s.on('connect', () => { document.getElementById('dot').classList.add('ok'); document.getElementById('st').textContent = 'Servidor conectado ✓'; s.emit('join', { tipo: 'display', terminalId: 'test-display' }); });
+        s.on('disconnect', () => { document.getElementById('dot').classList.remove('ok'); document.getElementById('st').textContent = 'Sin conexión'; });
+    </script>
+</body>
+</html>
