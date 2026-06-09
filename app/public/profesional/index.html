@@ -86,6 +86,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-finalizar:hover { background: #6d28d9; }
 .btn-cancelar-ll { background: #fef9c3; color: #854d0e; border: 1.5px solid #fde047; }
 .btn-cancelar-ll:hover { background: #fef08a; }
+.btn-sonar { background: #ede9fe; color: #5b21b6; border: 1.5px solid #c4b5fd; }
+.btn-sonar:hover { background: #ddd6fe; }
 .btn-accion:disabled { opacity: .45; cursor: default; }
 
 .vacia { text-align: center; padding: 40px; color: var(--gris); }
@@ -140,8 +142,15 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const TERMINAL_ID = (() => {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let id = localStorage.getItem('terminal_id');
-    if (!id) { id = 'prof-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); localStorage.setItem('terminal_id', id); }
+    if (!id || !UUID_RE.test(id)) {
+        id = crypto.randomUUID
+            ? crypto.randomUUID()
+            : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+        localStorage.setItem('terminal_id', id);
+    }
     return id;
 })();
 
@@ -169,6 +178,7 @@ socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove
 socket.on('asignacion:llamando',    () => cargarAsignaciones());
 socket.on('asignacion:en_atencion', () => cargarAsignaciones());
 socket.on('asignacion:finalizado',  () => cargarAsignaciones());
+socket.on('asignacion:cancelado',   () => cargarAsignaciones());
 socket.on('extension:sync',         () => cargarAsignaciones());
 
 // ── Setup ───────────────────────────────────────────────────────
@@ -273,6 +283,7 @@ function renderAsignaciones() {
 }
 
 function renderCard(a) {
+    const tieneActivo = asignaciones.some(x => x.estado === 'llamando' || x.estado === 'en_atencion');
     const nombreStr = a.nombre_completo || a.numero_identificacion;
     const tiempoLlegada = a.hora_llegada_biofile
         ? new Date(a.hora_llegada_biofile).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
@@ -297,10 +308,13 @@ function renderCard(a) {
     let botones = '';
     if (a.bloqueado && a.estado === 'pendiente') {
         botones = `<button class="btn-accion btn-llamar" disabled title="El paciente está siendo atendido">📢 Llamar</button>`;
+    } else if (a.estado === 'pendiente' && tieneActivo) {
+        botones = `<button class="btn-accion btn-llamar" disabled title="Termine la atención actual antes de llamar a otro paciente">📢 Llamar</button>`;
     } else if (a.estado === 'pendiente') {
         botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">📢 Llamar</button>`;
     } else if (a.estado === 'llamando') {
         botones = `
+            <button class="btn-accion btn-sonar" onclick="sonarLlamado('${a.id}')" title="Volver a sonar el timbre en el display">🔔 Sonar</button>
             <button class="btn-accion btn-atencion" onclick="accion('en-atencion','${a.id}')">✓ En Atención</button>
             <button class="btn-accion btn-cancelar-ll" onclick="cancelarLlamado('${a.id}')">✗ Cancelar</button>`;
     } else if (a.estado === 'en_atencion') {
@@ -333,11 +347,26 @@ async function accion(tipo, id) {
         });
         if (!resp.ok) {
             const d = await resp.json();
-            if (d.error === 'estado_invalido') cargarAsignaciones();
+            if (d.error === 'ya_tiene_paciente_activo') {
+                alert('Debe finalizar la atención actual antes de llamar a otro paciente.');
+            } else if (d.error === 'paciente_bloqueado') {
+                alert('Este paciente ya está siendo atendido por otro profesional.');
+            }
+            cargarAsignaciones();
         } else {
             cargarAsignaciones();
         }
     } catch {}
+}
+
+function sonarLlamado(id) {
+    const a = asignaciones.find(x => String(x.id) === String(id));
+    if (!a) return;
+    socket.emit('display:sonar', {
+        nombre_profesional: profesionalActual,
+        nombre_paciente: a.nombre_completo || a.numero_identificacion,
+        consultorio: consultorioActual
+    });
 }
 
 async function cancelarLlamado(id) {

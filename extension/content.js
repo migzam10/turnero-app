@@ -1,3 +1,4 @@
+// ── SOLICITAR_DATOS — usado por popup.js ───────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.tipo !== 'SOLICITAR_DATOS') return;
 
@@ -7,19 +8,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const tabla = document.querySelector('#TbCitasAsignadas');
         if (!tabla) return sendResponse({ loginName, pacientes: [] });
 
-        // Encabezados de columna: índice 0 = "N°", índice 1..n = nombre del profesional
         const headers = Array.from(tabla.querySelectorAll('thead th')).map(th => th.textContent.trim());
-
         const pacientes = [];
 
         tabla.querySelectorAll('tbody tr').forEach(fila => {
             const celdas = fila.querySelectorAll('td');
 
-            // celdas[0] = número de fila, celdas[1..n] = datos del paciente por profesional
             for (let i = 1; i < celdas.length; i++) {
                 const celda = celdas[i];
-
-                // Parsear innerHTML para manejar <br> como saltos de línea
                 const texto = celda.innerHTML
                     .replace(/<input[^>]*>/gi, '')
                     .replace(/<br\s*\/?>/gi, '\n')
@@ -31,26 +27,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                 const lineas = texto.split('\n').map(l => l.trim()).filter(l => l);
                 if (lineas.length < 2) continue;
 
-                const nombrePaciente      = lineas[0];
+                const nombrePaciente       = lineas[0];
                 const numeroIdentificacion = lineas[1];
-
                 if (!/^\d{5,12}$/.test(numeroIdentificacion)) continue;
 
-                const estado       = lineas[2] || '';
-                const tipoAtencion = lineas[3] ? lineas[3].replace(/[\[\]]/g, '').trim() : '';
-                const llegadaLinea = lineas.find(l => l.startsWith('Llegada:'));
+                const estado           = lineas[2] || '';
+                const tipoAtencion     = lineas[3] ? lineas[3].replace(/[\[\]]/g, '').trim() : '';
+                const llegadaLinea     = lineas.find(l => l.startsWith('Llegada:'));
                 const horaLlegadaBiofile = llegadaLinea ? llegadaLinea.replace('Llegada:', '').trim() : null;
-
-                // El encabezado de columna identifica al profesional y su especialidad
                 const columnaHeader    = headers[i] || `col_${i}`;
-                const nombreProfesional = columnaHeader;
 
                 pacientes.push({
                     numeroIdentificacion,
                     nombrePaciente,
                     estado,
                     tipoAtencion,
-                    nombreProfesional,
+                    nombreProfesional: columnaHeader,
                     columnaHeader,
                     horaLlegadaBiofile,
                     area: 'AtencionesSeguimiento'
@@ -66,3 +58,39 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     return true;
 });
+
+// ── MutationObserver: fast-path sync cuando cambia la tabla ────
+let _syncTimer = null;
+
+function triggerSync() {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(() => {
+        chrome.runtime.sendMessage({ tipo: 'SYNC_AHORA' }, () => {
+            // Suprimir "no receiving end" si el service worker todavía no despertó
+            void chrome.runtime.lastError;
+        });
+    }, 1500); // 1.5s de debounce: espera a que Biofile termine de renderizar
+}
+
+function attachTableObserver() {
+    const tabla = document.querySelector('#TbCitasAsignadas');
+    if (!tabla) return false;
+
+    const obs = new MutationObserver(triggerSync);
+
+    const tbody = tabla.querySelector('tbody');
+    if (tbody) obs.observe(tbody, { childList: true }); // filas nuevas/eliminadas
+    obs.observe(tabla, { childList: true });             // reemplazo del tbody entero
+
+    console.log('[CONTENT] Observer activo en #TbCitasAsignadas');
+    return true;
+}
+
+// Si la tabla ya está en el DOM al cargar, adjuntar directo.
+// Si no, esperar a que aparezca (carga asíncrona de Biofile).
+if (!attachTableObserver()) {
+    const waitObs = new MutationObserver(() => {
+        if (attachTableObserver()) waitObs.disconnect();
+    });
+    waitObs.observe(document.body, { childList: true, subtree: true });
+}

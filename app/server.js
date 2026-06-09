@@ -3,9 +3,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const cron = require('node-cron');
 const { migrate } = require('./database/migrate');
-const { query } = require('./database/db');
 const { registrarEventosSocket } = require('./sockets/events');
 
 const app = express();
@@ -44,25 +42,6 @@ app.get('/health', (req, res) => {
 
 // Socket.io
 registrarEventosSocket(io);
-
-// Limpieza diaria a medianoche
-cron.schedule('0 0 * * *', async () => {
-    try {
-        const { rows } = await query(
-            `SELECT valor FROM configuracion WHERE clave = 'dias_retener_datos'`
-        );
-        const dias = parseInt(rows[0]?.valor || '7');
-        const { rowCount: borradosCola } = await query(
-            `DELETE FROM pacientes_cola WHERE fecha < CURRENT_DATE - $1::INTEGER`, [dias]
-        );
-        const { rowCount: borradosLog } = await query(
-            `DELETE FROM eventos_log WHERE fecha < CURRENT_DATE - 30`
-        );
-        console.log(`[CRON] Limpieza: ${borradosCola} pacientes, ${borradosLog} logs eliminados`);
-    } catch (err) {
-        console.error('[CRON] Error en limpieza:', err.message);
-    }
-});
 
 const PORT = process.env.PORT || 3000;
 

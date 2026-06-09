@@ -44,6 +44,11 @@ function registrarEventosSocket(io) {
             } catch (_) {}
         });
 
+        // Profesional solicita sonar el timbre en el display
+        socket.on('display:sonar', (data) => {
+            io.to('display').emit('display:sonar', data);
+        });
+
         socket.on('disconnect', () => {
             console.log(`[WS] Desconectado: ${socket.id} (${socket.data.tipo || 'unknown'})`);
         });

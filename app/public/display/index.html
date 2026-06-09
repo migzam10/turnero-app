@@ -6,41 +6,52 @@
 <title>Pantalla TV — Turnero CertiMedic</title>
 <style>
 :root {
-    --fondo: #0a1628;
-    --card:  #0f2240;
-    --card2: #162d52;
-    --azul:  #3b82f6;
-    --verde: #22c55e;
-    --naranja: #f59e0b;
-    --borde: rgba(255,255,255,.08);
+    --fondo:   #eef2f7;
+    --card:    #ffffff;
+    --card2:   #f4f7fc;
+    --azul:    #1e40af;
+    --azul-lt: #dbeafe;
+    --verde:   #16a34a;
+    --naranja: #d97706;
+    --borde:   #dde3ed;
+    --texto:   #0f172a;
+    --texto2:  #475569;
+    --header:  #1e3a6e;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
-body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: white; display: flex; flex-direction: column; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); display: flex; flex-direction: column; }
 
 /* Header */
-.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--borde); background: var(--card); flex-shrink: 0; }
-.logo { font-size: 1rem; font-weight: 800; color: var(--azul); letter-spacing: .02em; }
-.header-right { display: flex; align-items: center; gap: 16px; font-size: .85rem; color: rgba(255,255,255,.6); }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid rgba(0,0,0,.1); background: var(--header); flex-shrink: 0; }
+.logo { font-size: 1rem; font-weight: 800; color: #93c5fd; letter-spacing: .02em; }
+.header-right { display: flex; align-items: center; gap: 16px; font-size: .85rem; color: rgba(255,255,255,.7); }
 #reloj-display { font-size: 1.1rem; font-weight: 700; color: white; }
-.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #555; }
-.dot-ws.ok { background: var(--verde); box-shadow: 0 0 6px var(--verde); }
+.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #4a5568; }
+.dot-ws.ok { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
 
 /* Layout principal: tres columnas */
 .layout { flex: 1; display: grid; grid-template-columns: 280px 1fr 280px; gap: 1px; background: var(--borde); overflow: hidden; }
 
 /* Columnas laterales */
 .col-lateral { background: var(--card); padding: 16px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.col-titulo { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: rgba(255,255,255,.4); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--borde); }
+.col-titulo { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--texto2); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--borde); }
 
 /* Tarjeta de consultorio / módulo */
-.item-card { background: var(--card2); border-radius: 10px; padding: 12px 14px; margin-bottom: 6px; border: 1.5px solid var(--borde); transition: all .4s; }
-.item-card.activo { border-color: var(--azul); background: #1a3a6e; }
+.item-card { background: var(--card2); border-radius: 10px; padding: 12px 14px; margin-bottom: 6px; border: 1.5px solid var(--borde); box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: all .4s; }
+.item-card.activo { border-color: var(--azul); background: var(--azul-lt); box-shadow: 0 2px 8px rgba(30,64,175,.12); }
 .item-card.libre { opacity: .45; }
-.item-num { font-size: .72rem; font-weight: 700; color: rgba(255,255,255,.45); text-transform: uppercase; margin-bottom: 3px; }
-.item-nombre { font-size: 1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item-nombre.libre { font-size: .85rem; color: rgba(255,255,255,.3); font-style: italic; }
-.item-pro { font-size: .72rem; color: rgba(255,255,255,.45); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-num { font-size: .72rem; font-weight: 700; color: var(--texto2); text-transform: uppercase; margin-bottom: 3px; }
+.item-nombre { font-size: 1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--texto); }
+.item-nombre.libre { font-size: .85rem; color: #94a3b8; font-style: italic; }
+.item-pro { font-size: .72rem; color: var(--texto2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Animación sonar */
+@keyframes sonandoPulso {
+    0%, 100% { border-color: var(--azul); background: var(--azul-lt); }
+    50% { border-color: #3b82f6; background: #bfdbfe; box-shadow: 0 0 20px rgba(30,64,175,.4); transform: scale(1.03); }
+}
+.item-card.sonando { animation: sonandoPulso .6s ease-in-out 3; }
 
 /* Centro - llamado actual */
 .col-centro { background: var(--fondo); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; position: relative; }
@@ -49,24 +60,24 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: whi
 .llamado-container { display: flex; flex-direction: column; align-items: center; gap: 16px; animation: fadeIn .4s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
 @keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
-.llamado-etiqueta { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; color: rgba(255,255,255,.4); }
-.llamado-nombre { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; color: white; line-height: 1.1; animation: pulso 2s ease-in-out infinite; }
+.llamado-etiqueta { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; color: var(--texto2); }
+.llamado-nombre { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; color: var(--texto); line-height: 1.1; animation: pulso 2s ease-in-out infinite; }
 .llamado-destino { font-size: 1.3rem; color: var(--azul); font-weight: 700; }
 .llamado-tipo-badge { font-size: .75rem; padding: 4px 14px; border-radius: 99px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
-.badge-admision { background: rgba(245,158,11,.15); color: var(--naranja); border: 1.5px solid var(--naranja); }
-.badge-profesional { background: rgba(59,130,246,.15); color: var(--azul); border: 1.5px solid var(--azul); }
+.badge-admision { background: rgba(217,119,6,.12); color: #92400e; border: 1.5px solid var(--naranja); }
+.badge-profesional { background: rgba(30,64,175,.1); color: var(--azul); border: 1.5px solid var(--azul); }
 
 /* Cola de espera en centro */
 .cola-siguiente { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.sig-item { background: rgba(255,255,255,.07); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 12px; font-size: .72rem; color: rgba(255,255,255,.5); }
+.sig-item { background: rgba(30,64,175,.07); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 12px; font-size: .72rem; color: var(--texto2); }
 
 /* Sin llamados */
-.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: .2; }
+.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: .25; }
 .sin-llamado-icono { font-size: 5rem; }
-.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--texto); }
 
 /* Barra de progreso del llamado */
-.progreso-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: var(--azul); transition: width linear; border-radius: 0 3px 0 0; }
+.progreso-bar { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--azul); transition: width linear; border-radius: 0 3px 0 0; }
 </style>
 </head>
 <body>
@@ -144,6 +155,7 @@ function beep(frecuencia = 880, duracion = 150) {
 function beepDoble() {
     beep(880, 150);
     setTimeout(() => beep(1100, 180), 250);
+    setTimeout(() => beep(1320, 180), 500);
 }
 
 // ── Render consultorios ─────────────────────────────────────────
@@ -157,12 +169,10 @@ function renderConsultorios() {
     // Ordenar por consultorio
     items.sort((a, b) => (a.consultorio || '').localeCompare(b.consultorio || '', undefined, { numeric: true }));
     lista.innerHTML = items.map(c => {
-        const activo = c.estado === 'en_atencion';
-        const libre = !c.nombre_paciente || c.estado === 'finalizado';
-        return `<div class="item-card ${activo ? 'activo' : ''} ${libre ? 'libre' : ''}">
+        const prof = (c.profesional || '').replace(/"/g, '&quot;');
+        return `<div class="item-card activo" data-profesional="${prof}">
             <div class="item-num">Consultorio ${c.consultorio || '—'}</div>
-            <div class="item-nombre ${libre ? 'libre' : ''}">${libre ? '(Libre)' : c.nombre_paciente}</div>
-            <div class="item-pro">${c.profesional || ''}</div>
+            <div class="item-nombre">${c.nombre_paciente || 'PACIENTE'}</div>
         </div>`;
     }).join('');
 }
@@ -250,6 +260,18 @@ function renderColaSiguiente() {
     ).join('');
 }
 
+// Cancela inmediatamente la visualización de un profesional (timer + cola)
+function cancelarLlamadoProfesional(prof) {
+    if (!prof) return;
+    estado.colaCalls = estado.colaCalls.filter(c => c.nombre_profesional !== prof);
+    renderColaSiguiente();
+    if (estado.llamadoActivo?.nombre_profesional === prof) {
+        clearTimeout(estado.progresoTimer);
+        estado.llamadoActivo = null;
+        procesarSiguiente();
+    }
+}
+
 // ── Socket.io ───────────────────────────────────────────────────
 const socket = io();
 
@@ -259,6 +281,24 @@ socket.on('connect', () => {
     cargarEstadoInicial();
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+
+// Profesional solicita volver a sonar
+socket.on('display:sonar', (data) => {
+    beepDoble();
+    const prof = data.nombre_profesional;
+    if (prof) {
+        const tarjetas = document.querySelectorAll('.item-card[data-profesional]');
+        for (const card of tarjetas) {
+            if (card.dataset.profesional === prof) {
+                card.classList.remove('sonando');
+                void card.offsetWidth; // reiniciar animación
+                card.classList.add('sonando');
+                card.addEventListener('animationend', () => card.classList.remove('sonando'), { once: true });
+                break;
+            }
+        }
+    }
+});
 
 // Admisiones llama un paciente
 socket.on('admision:llamando', (p) => {
@@ -294,7 +334,9 @@ socket.on('asignacion:llamando', (a) => {
     const consultorio = a.consultorio || a.consultorio_profesional;
     const prof = a.nombre_profesional;
 
-    // Registrar en consultorios (pendiente de entrar)
+    // Cancelar display anterior de este profesional antes de mostrar el nuevo
+    cancelarLlamadoProfesional(prof);
+
     if (prof) {
         estado.consultorios[prof] = {
             profesional: prof, nombre_paciente: nombre,
@@ -306,27 +348,30 @@ socket.on('asignacion:llamando', (a) => {
     encolarLlamado({
         tipo: 'profesional',
         nombre_paciente: nombre,
+        nombre_profesional: prof,
         destino: consultorio ? `Consultorio ${consultorio}` : (a.area || 'Consultorio')
     });
 });
 
-// Profesional pasa a en atención
+// Profesional pasa a en atención — sale de la columna izquierda
 socket.on('asignacion:en_atencion', (a) => {
     const prof = a.nombre_profesional;
-    if (prof && estado.consultorios[prof]) {
-        estado.consultorios[prof].estado = 'en_atencion';
-        estado.consultorios[prof].nombre_paciente = a.nombre_paciente || estado.consultorios[prof].nombre_paciente;
-        estado.consultorios[prof].consultorio = a.consultorio_profesional || estado.consultorios[prof].consultorio;
-    }
+    if (prof) delete estado.consultorios[prof];
+    renderConsultorios();
+});
+
+// Profesional cancela llamado — sale de columna izquierda y del display central
+socket.on('asignacion:cancelado', (a) => {
+    const prof = a.nombre_profesional;
+    cancelarLlamadoProfesional(prof);
+    if (prof) delete estado.consultorios[prof];
     renderConsultorios();
 });
 
 // Profesional finaliza
 socket.on('asignacion:finalizado', (a) => {
     const prof = a.nombre_profesional;
-    if (prof && estado.consultorios[prof]) {
-        delete estado.consultorios[prof];
-    }
+    if (prof) delete estado.consultorios[prof];
     renderConsultorios();
 });
 
