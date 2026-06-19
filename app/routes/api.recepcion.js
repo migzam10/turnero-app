@@ -42,13 +42,23 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
     }
 
     try {
+        // Validar UUID del terminal antes de insertar
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const terminalUUID = UUID_RE.test(req.terminalId) ? req.terminalId : null;
+
+        const fechaParam = fecha_nacimiento || '';
+
         const { rows } = await query(
             `INSERT INTO pacientes_cola
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
                  primer_apellido, segundo_apellido, ciudad_expedicion, fecha_nacimiento,
                  prioridad, terminal_recepcion_id)
              VALUES ($1,$2,$3,$4,$5,$6,$7,
-                     CASE WHEN $8 = '' THEN NULL ELSE TO_DATE($8, 'DD/MM/YYYY') END,
+                     CASE
+                         WHEN $8 = '' THEN NULL
+                         WHEN $8 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $8::DATE
+                         ELSE TO_DATE($8, 'DD/MM/YYYY')
+                     END,
                      $9,$10)
              ON CONFLICT (fecha, numero_identificacion) DO NOTHING
              RETURNING *`,
@@ -56,8 +66,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
-             fecha_nacimiento || '',
-             prioridad, req.terminalId]
+             fechaParam, prioridad, terminalUUID]
         );
 
         if (rows.length === 0) {

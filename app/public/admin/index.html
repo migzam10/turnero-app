@@ -377,7 +377,7 @@ function renderReporteDetallado(data) {
                 `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
             </table></div>
         </div>
-        <div class="seccion">
+        <div class="seccion" style="margin-bottom:16px">
             <div class="seccion-header"><span class="seccion-titulo">Timeline T1→T5 por paciente</span></div>
             <div class="tabla-wrapper"><table>
                 <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Min. espera</th><th>Min. total</th></tr></thead>
@@ -388,6 +388,25 @@ function renderReporteDetallado(data) {
                     <td>${horaFmt(p.t5_ultima_finalizacion)}</td>
                     <td>${p.min_espera_admision ? p.min_espera_admision + ' min' : '—'}</td>
                     <td>${p.min_tiempo_total_clinica ? p.min_tiempo_total_clinica + ' min' : '—'}</td></tr>
+                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+            </table></div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Reporte por admisión — Llegada · Llamado · Finalización</span></div>
+            <div class="tabla-wrapper"><table>
+                <thead><tr><th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Estado</th><th>Llegada Biofile</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
+                <tbody>${(data.asignaciones||[]).map(a => `
+                    <tr>
+                        <td>${a.cedula}</td>
+                        <td>${a.nombre}</td>
+                        <td>${a.nombre_profesional}</td>
+                        <td>${a.area}</td>
+                        <td><span class="badge b-${a.estado}">${a.estado}</span></td>
+                        <td>${horaFmt(a.hora_llegada_biofile)}</td>
+                        <td>${horaFmt(a.hora_llamado)}</td>
+                        <td>${horaFmt(a.hora_finalizado)}</td>
+                        <td>${a.min_atencion ? a.min_atencion + ' min' : '—'}</td>
+                    </tr>
                 `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
             </table></div>
         </div>`;
@@ -411,7 +430,10 @@ function renderReporteRango(data) {
 function exportarCSVReporte() {
     if (!dataReporte) return;
     let filas;
-    if (dataReporte.timeline) {
+    if (dataReporte.asignaciones) {
+        filas = [['Cedula','Paciente','Profesional','Area','Estado','Llegada.Biofile','Hora.Llamado','Hora.Finalizado','Min.Atencion']];
+        (dataReporte.asignaciones||[]).forEach(a => filas.push([a.cedula,a.nombre,a.nombre_profesional,a.area,a.estado,horaFmt(a.hora_llegada_biofile),horaFmt(a.hora_llamado),horaFmt(a.hora_finalizado),a.min_atencion||'']));
+    } else if (dataReporte.timeline) {
         filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Min.Espera','Min.Total']];
         (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_tiempo_total_clinica||'']));
     } else {
