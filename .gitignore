@@ -4,3 +4,8 @@ node_modules/
 npm-debug.log*
 .DS_Store
 .claude/
+
+# Llave privada de firma de la extension (NO subir nunca) y .crx generado
+extension-deploy/*.pem
+extension-deploy/*.crx
+installer/nssm.exe

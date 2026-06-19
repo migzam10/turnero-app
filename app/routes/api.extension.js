@@ -16,7 +16,7 @@ router.post('/sync', async (req, res) => {
     const resultados = { nuevos: 0, actualizados: 0, errores: 0 };
 
     for (const p of pacientes) {
-        const { numeroIdentificacion, nombreProfesional, area, columnaHeader, horaLlegadaBiofile } = p;
+        const { numeroIdentificacion, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile } = p;
         if (!numeroIdentificacion || !nombreProfesional || !columnaHeader) {
             resultados.errores++;
             continue;
@@ -31,15 +31,16 @@ router.post('/sync', async (req, res) => {
 
             const { rows } = await query(
                 `INSERT INTO asignaciones_profesionales
-                    (fecha, paciente_cola_id, numero_identificacion, nombre_profesional,
+                    (fecha, paciente_cola_id, numero_identificacion, nombre_paciente, nombre_profesional,
                      area, columna_header, hora_llegada_biofile, terminal_id, login_name_biofile)
-                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8, $9)
                  ON CONFLICT (fecha, numero_identificacion, columna_header)
                  DO UPDATE SET
+                     nombre_paciente = COALESCE(EXCLUDED.nombre_paciente, asignaciones_profesionales.nombre_paciente),
                      hora_llegada_biofile = EXCLUDED.hora_llegada_biofile,
                      updated_at = NOW()
                  RETURNING (xmax = 0) AS es_nuevo`,
-                [pacienteColaId, numeroIdentificacion, nombreProfesional,
+                [pacienteColaId, numeroIdentificacion, nombrePaciente || null, nombreProfesional,
                  area, columnaHeader, horaLlegadaBiofile || null, terminalId || null, loginName]
             );
 

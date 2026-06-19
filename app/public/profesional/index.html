@@ -285,9 +285,12 @@ function renderAsignaciones() {
 function renderCard(a) {
     const tieneActivo = asignaciones.some(x => x.estado === 'llamando' || x.estado === 'en_atencion');
     const nombreStr = a.nombre_completo || a.numero_identificacion;
-    const tiempoLlegada = a.hora_llegada_biofile
+    const tiempoLlegadaFisica = a.hora_llegada_fisica
+        ? new Date(a.hora_llegada_fisica).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        : null;
+    const tiempoAdmisionBiofile = a.hora_llegada_biofile
         ? new Date(a.hora_llegada_biofile).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-        : '—';
+        : null;
 
     let estadoBadge = '';
     if (a.estado === 'pendiente') estadoBadge = '<span class="estado-badge eb-pendiente">Pendiente</span>';
@@ -331,7 +334,8 @@ function renderCard(a) {
         </div>
         <div class="pac-meta">
             <span>CC ${a.numero_identificacion}</span>
-            ${tiempoLlegada !== '—' ? `<span>Llegó: ${tiempoLlegada}</span>` : ''}
+            ${tiempoLlegadaFisica ? `<span>Llegó: ${tiempoLlegadaFisica}</span>` : ''}
+            ${tiempoAdmisionBiofile ? `<span>Admisionado: ${tiempoAdmisionBiofile}</span>` : ''}
         </div>
         ${bloqueoBanner}
         <div class="pac-btns">${botones}</div>

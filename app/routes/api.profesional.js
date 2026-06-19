@@ -17,12 +17,14 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
                 COALESCE(
                     pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
                     pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
+                    ap.nombre_paciente,
                     ap.numero_identificacion
                 ) AS nombre_completo,
                 COALESCE(pc.prioridad, 'normal') AS prioridad,
                 ap.area, ap.columna_header, ap.estado, ap.consultorio_profesional,
-                ap.hora_llegada_biofile, ap.hora_llamado,
-                ap.hora_en_atencion, ap.hora_finalizado,
+                pc.hora_llegada AS hora_llegada_fisica,
+                ap.hora_llegada_biofile,
+                ap.hora_llamado, ap.hora_en_atencion, ap.hora_finalizado,
                 EXISTS (
                     SELECT 1 FROM asignaciones_profesionales otro
                     WHERE otro.numero_identificacion = ap.numero_identificacion
@@ -75,6 +77,28 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
     const { profesional, consultorio } = req.body;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
+        // Bug #6: bloquear si el profesional ya tiene un paciente activo
+        const { rows: activos } = await query(
+            `SELECT 1 FROM asignaciones_profesionales
+             WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
+               AND estado IN ('llamando','en_atencion') LIMIT 1`,
+            [profesional]
+        );
+        if (activos.length > 0) return res.status(409).json({ error: 'ya_tiene_paciente_activo' });
+
+        // Bug #7: bloquear si el paciente ya está siendo atendido por otro profesional
+        const { rows: bloqueado } = await query(
+            `SELECT 1 FROM asignaciones_profesionales ap2
+             WHERE ap2.numero_identificacion = (
+                 SELECT numero_identificacion FROM asignaciones_profesionales WHERE id = $1
+             )
+             AND ap2.fecha = CURRENT_DATE
+             AND ap2.nombre_profesional <> $2
+             AND ap2.estado IN ('llamando','en_atencion') LIMIT 1`,
+            [req.params.id, profesional]
+        );
+        if (bloqueado.length > 0) return res.status(409).json({ error: 'paciente_bloqueado' });
+
         const { rows, rowCount } = await query(
             `UPDATE asignaciones_profesionales
              SET estado = 'llamando', hora_llamado = NOW(),
@@ -87,7 +111,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
 
         // Obtener nombre del paciente para el display
         const { rows: conNombre } = await query(
-            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
              WHERE ap.id = $1`,
@@ -122,7 +146,7 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
 
         const { rows: conNombre } = await query(
-            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
              WHERE ap.id = $1`,
@@ -157,6 +181,7 @@ router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
 
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:cancelado', rows[0]);
+        io.to('display').emit('asignacion:cancelado', rows[0]);
 
         return res.json(rows[0]);
     } catch (err) {

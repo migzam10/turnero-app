@@ -3,6 +3,7 @@
   "name": "Turnero CertiMedic — Biofile Sync",
   "version": "1.0.0",
   "description": "Sincroniza pacientes de Biofile con el sistema de turnos",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4RcLfQaT7s3/Z5dY+kXyZ4oB61/VghXsdE4gmdz5lReF8ivXqOWiyQakISKlSkpymfIFfPo0iHfuH+80a/wj8e9zxzblind6LrjB3zPhtrkY04sJJeyvoOU9d/8cGde/eKAbnIz29iif/FBBhKCH8RQTvr3ltlsoKZQ9Ig6OCer4ybN331IklzOARM0EZBIbrU7cYE1Vuo6rVmFtclDlU2mkuia+w2vnEgVwAnWYqlbJ6fWFjNHFjBrThzZKsF3Yv5z6fYOOf5I7URSdn/bvnJ4fHugAaZTetDUhLVjBsFxyKonyIO+EOH7wYjAMA2UquiZJJ5bTpzeU/v/dvLteCwIDAQAB",
   "permissions": ["alarms", "storage", "tabs", "scripting"],
   "host_permissions": [
     "*://ipscertimedic.biofile.com.co/*"

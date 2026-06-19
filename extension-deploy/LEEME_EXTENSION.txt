@@ -1,0 +1,86 @@
+============================================================
+ EXTENSION TURNERO CERTIMEDIC - DESPLIEGUE EN TERMINALES
+============================================================
+
+IDEA GENERAL
+------------
+La extension NO va en el servidor: va en cada PC terminal (los de
+admisiones que abren Biofile en Chrome/Edge). La instalamos "forzada"
+por politica de Windows: queda fija, no se puede quitar, se reinstala
+sola si la borran, y se descarga/actualiza desde el propio servidor
+turnero (sin internet, todo en la LAN).
+
+ID fijo de la extension:  cnjjkmpamkklleaplpjhompomkbilcag
+
+ARCHIVOS DE ESTA CARPETA
+------------------------
+  turnero_extension.pem    Llave de firma. SECRETA. NO subir a git ni
+                           compartir. Si la pierdes, cambia el ID y hay
+                           que reinstalar en todos los terminales.
+  empaquetar_crx.bat       Genera turnero.crx (se corre 1 vez en tu PC).
+  updates.xml             Manifiesto que va en el servidor.
+  instalar_extension.bat   Se corre en CADA terminal (como admin).
+  desinstalar_extension.bat Quita la extension de un terminal.
+
+
+====================  PARTE 1: PREPARAR (1 sola vez)  =======
+
+PASO 1 - Configurar la extension antes de empaquetar
+   Edita  ..\extension\background.js  y ajusta el bloque CONFIG:
+       SERVER_URL       = http://IP_DEL_SERVIDOR:PUERTO
+       EXTENSION_SECRET = (el MISMO secreto que pusiste en el
+                          instalador del servidor / archivo .env)
+   Estos valores quedan grabados dentro del .crx, asi que tienen que
+   ser los correctos ANTES de empaquetar.
+
+PASO 2 - Generar el .crx
+   Doble clic en  empaquetar_crx.bat
+   Genera  turnero.crx  en esta misma carpeta.
+
+PASO 3 - Subir al servidor
+   Copia al servidor turnero, dentro de su carpeta 'public'
+   (ej:  C:\turnero-certimedic\public\ ):
+        - turnero.crx
+        - updates.xml
+   Edita ese updates.xml y reemplaza __SERVIDOR__ por la IP:PUERTO
+   reales del servidor (ej: 192.168.1.100:3000).
+
+   Comprueba en un navegador que se ven:
+        http://IP_DEL_SERVIDOR:PUERTO/updates.xml
+        http://IP_DEL_SERVIDOR:PUERTO/turnero.crx   (debe descargar)
+
+
+==============  PARTE 2: INSTALAR EN CADA TERMINAL  ========
+
+En cada PC de admisiones:
+   1. Copia  instalar_extension.bat  al terminal (USB/red).
+   2. Clic derecho -> "Ejecutar como administrador".
+   3. Escribe la IP:PUERTO del servidor cuando lo pida.
+   4. Cierra del todo Chrome y Edge y vuelve a abrirlos.
+   5. La extension aparece sola (hasta 1-2 min la primera vez).
+      Verifica en chrome://extensions o edge://extensions que dice
+      "Instalada por una politica de empresa".
+
+
+====================  ACTUALIZAR LA EXTENSION  =============
+Cuando cambies el codigo de la extension:
+   1. Sube el numero de "version" en  ..\extension\manifest.json
+      Y el mismo numero en  updates.xml  (campo version).
+   2. Vuelve a correr empaquetar_crx.bat.
+   3. Reemplaza turnero.crx y updates.xml en la carpeta public del
+      servidor.
+   Los terminales se actualizan solos (Chrome revisa cada pocas horas;
+   reiniciar el navegador lo fuerza). NO hay que tocar los terminales.
+
+
+====================  QUITAR  ==============================
+En el terminal: clic derecho en desinstalar_extension.bat ->
+"Ejecutar como administrador", y reinicia el navegador.
+
+
+NOTA IMPORTANTE SOBRE EL host_permissions
+-----------------------------------------
+El manifest.json apunta a:  *://ipscertimedic.biofile.com.co/*
+Si la URL de Biofile del cliente es distinta, edita ese dominio en
+manifest.json ANTES de empaquetar.
+============================================================

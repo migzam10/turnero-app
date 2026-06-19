@@ -209,7 +209,30 @@ router.get('/reporte-detallado', async (req, res) => {
             [fecha]
         );
 
-        return res.json({ fecha, kpis: kpis[0], timeline, por_profesional: porProfesional });
+        // Bug #12: detalle por admisión (una fila por asignación profesional)
+        const { rows: asignaciones } = await query(
+            `SELECT
+                ap.numero_identificacion AS cedula,
+                COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre,
+                ap.nombre_profesional,
+                ap.area,
+                ap.estado,
+                ap.hora_llegada_biofile,
+                ap.hora_llamado,
+                ap.hora_en_atencion,
+                ap.hora_finalizado,
+                CASE
+                    WHEN ap.hora_finalizado IS NOT NULL AND ap.hora_en_atencion IS NOT NULL
+                    THEN ROUND(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
+                END AS min_atencion
+             FROM asignaciones_profesionales ap
+             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             WHERE ap.fecha = $1
+             ORDER BY ap.nombre_profesional, ap.hora_llegada_biofile NULLS LAST, ap.created_at`,
+            [fecha]
+        );
+
+        return res.json({ fecha, kpis: kpis[0], timeline, por_profesional: porProfesional, asignaciones });
     } catch (err) {
         console.error('[admin/reporte-detallado]', err);
         return res.status(500).json({ error: 'db_error' });
@@ -252,10 +275,10 @@ router.get('/estado-display', async (req, res) => {
     try {
         const { rows: consultorios } = await query(
             `SELECT ap.nombre_profesional, ap.consultorio_profesional, ap.estado,
-                    COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.numero_identificacion) AS nombre_paciente
+                    COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
-             WHERE ap.fecha = CURRENT_DATE AND ap.estado IN ('llamando','en_atencion')
+             WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando'
              ORDER BY ap.nombre_profesional`
         );
         const { rows: modulos } = await query(

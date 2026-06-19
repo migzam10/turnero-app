@@ -67,6 +67,29 @@ function extraerPacientes() {
     return { loginName, pacientes };
 }
 
+// Biofile date format: "Jun 9 2026  7:04AM" — hora en Colombia (UTC-5)
+// NO usar new Date() + GMT-0500: V8 ignora el offset cuando el formato es "7:04AM" sin espacio.
+// Parseo manual: convierte Colombia → UTC sumando 5 horas.
+function parseFechaBiofile(str) {
+    if (!str) return null;
+    const m = str.trim().replace(/\s+/g, ' ')
+        .match(/^(\w{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return null;
+
+    const MESES = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5,
+                    jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+    const mesIdx = MESES[m[1].toLowerCase()];
+    if (mesIdx === undefined) return null;
+
+    let h = parseInt(m[4], 10);
+    if (m[6].toUpperCase() === 'AM' && h === 12) h = 0;
+    if (m[6].toUpperCase() === 'PM' && h !== 12) h += 12;
+
+    // Colombia es UTC-5: hora_UTC = hora_Colombia + 5
+    const utc = Date.UTC(parseInt(m[3]), mesIdx, parseInt(m[2]), h + 5, parseInt(m[5]));
+    return isNaN(utc) ? null : new Date(utc).toISOString();
+}
+
 async function getTerminalId() {
     return new Promise(resolve => {
         chrome.storage.local.get(['terminalId'], (result) => {
@@ -96,6 +119,12 @@ async function ejecutarSync() {
     if (!respuesta) return { error: 'Sin respuesta del script' };
     if (!respuesta.pacientes?.length) return { error: `Sin pacientes en la tabla (loginName: ${respuesta.loginName || 'no encontrado'})` };
 
+    // Normalizar fechas de Biofile a ISO con zona horaria Colombia (UTC-5)
+    const pacientesNorm = respuesta.pacientes.map(p => ({
+        ...p,
+        horaLlegadaBiofile: parseFechaBiofile(p.horaLlegadaBiofile)
+    }));
+
     const res = await fetch(`${CONFIG.SERVER_URL}/api/extension/sync`, {
         method: 'POST',
         headers: {
@@ -105,7 +134,7 @@ async function ejecutarSync() {
         body: JSON.stringify({
             loginName: respuesta.loginName,
             terminalId: await getTerminalId(),
-            pacientes: respuesta.pacientes
+            pacientes: pacientesNorm
         })
     });
 

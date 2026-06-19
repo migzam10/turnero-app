@@ -107,6 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_asig_estado         ON asignaciones_profesionales
 CREATE INDEX IF NOT EXISTS idx_eventos_fecha       ON eventos_log(fecha);
 CREATE INDEX IF NOT EXISTS idx_eventos_tipo        ON eventos_log(tipo);
 
--- Columna para consultorio del profesional (agregada en v2)
+-- Columna para consultorio del profesional (v2)
 ALTER TABLE asignaciones_profesionales
     ADD COLUMN IF NOT EXISTS consultorio_profesional VARCHAR(20);
+
+-- Nombre del paciente desde Biofile (v3) — necesario cuando no hay registro en pacientes_cola
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS nombre_paciente VARCHAR(150);
