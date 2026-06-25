@@ -23,6 +23,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; }
 .dot-ws.ok { background: #4ade80; }
 #reloj { font-weight: 600; }
+.filtro-fecha { background: rgba(255,255,255,.15); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: .78rem; font-family: inherit; color-scheme: dark; }
 
 /* Setup */
 .overlay-setup { position: fixed; inset: 0; background: rgba(15,23,42,.75); z-index: 200; display: flex; align-items: center; justify-content: center; }
@@ -72,6 +73,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .eb-pendiente { background: #f1f5f9; color: var(--gris); }
 .eb-llamando { background: #fef3c7; color: #92400e; }
 .eb-en_atencion { background: #dbeafe; color: var(--azul2); }
+.eb-finalizado { background: #dcfce7; color: var(--verde); }
 
 .pac-meta { font-size: .78rem; color: var(--gris); margin-bottom: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
 .bloqueo-aviso { font-size: .78rem; color: var(--naranja); background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 5px 10px; margin-bottom: 8px; }
@@ -122,6 +124,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <div class="sub" id="header-consultorio">Consultorio —</div>
     </div>
     <div class="header-right">
+        <input type="date" id="filtro-fecha" class="filtro-fecha" title="Ver asignaciones de otro día">
+        <button class="btn-config" id="btn-hoy" onclick="volverAHoy()" style="display:none">Hoy</button>
         <span id="reloj">--:--</span>
         <button class="btn-config" onclick="abrirSetup()">⚙ Cambiar</button>
         <div class="dot-ws" id="dot-ws"></div>
@@ -229,10 +233,19 @@ function abrirSetup() {
 }
 
 // ── Asignaciones ────────────────────────────────────────────────
+// Fecha de hoy en formato YYYY-MM-DD (zona local del navegador = Bogotá)
+function fechaHoyLocal() {
+    return new Date().toLocaleDateString('en-CA'); // en-CA → YYYY-MM-DD
+}
+
 async function cargarAsignaciones() {
     if (!profesionalActual) return;
+    const fechaSel = document.getElementById('filtro-fecha').value || '';
+    const esHistorial = fechaSel && fechaSel !== fechaHoyLocal();
+    document.getElementById('btn-hoy').style.display = esHistorial ? '' : 'none';
+    const qsFecha = fechaSel ? `&fecha=${encodeURIComponent(fechaSel)}` : '';
     try {
-        const resp = await fetch(`/api/profesional/asignaciones?profesional=${encodeURIComponent(profesionalActual)}`, {
+        const resp = await fetch(`/api/profesional/asignaciones?profesional=${encodeURIComponent(profesionalActual)}${qsFecha}`, {
             headers: { 'X-Terminal-Id': TERMINAL_ID }
         });
         asignaciones = await resp.json();
@@ -251,10 +264,12 @@ function renderAsignaciones() {
     const pendientes = asignaciones.filter(a => a.estado === 'pendiente');
     const llamando   = asignaciones.filter(a => a.estado === 'llamando');
     const enAtencion = asignaciones.filter(a => a.estado === 'en_atencion');
+    const finalizados = asignaciones.filter(a => a.estado === 'finalizado');
 
     document.getElementById('cnt-pendiente').textContent = pendientes.length;
     document.getElementById('cnt-llamando').textContent  = llamando.length;
     document.getElementById('cnt-atencion').textContent  = enAtencion.length;
+    document.getElementById('cnt-finalizado').textContent = finalizados.length;
 
     if (!asignaciones.length) {
         lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px">🕐</div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
@@ -278,6 +293,11 @@ function renderAsignaciones() {
         secciones.push(`<div class="seccion-titulo" style="margin-top:14px">⏳ Pendientes (${pendientes.length})</div>`);
         secciones.push(pendientes.map(a => renderCard(a)).join(''));
     }
+    // Finalizados (solo aparecen al consultar el historial de días anteriores)
+    if (finalizados.length) {
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">✅ Finalizados (${finalizados.length})</div>`);
+        secciones.push(finalizados.map(a => renderCard(a)).join(''));
+    }
 
     lista.innerHTML = secciones.join('');
 }
@@ -296,6 +316,10 @@ function renderCard(a) {
     if (a.estado === 'pendiente') estadoBadge = '<span class="estado-badge eb-pendiente">Pendiente</span>';
     if (a.estado === 'llamando')  estadoBadge = '<span class="estado-badge eb-llamando">Llamando...</span>';
     if (a.estado === 'en_atencion') estadoBadge = '<span class="estado-badge eb-en_atencion">En atención</span>';
+    if (a.estado === 'finalizado')  estadoBadge = '<span class="estado-badge eb-finalizado">Finalizado</span>';
+    const tiempoFinalizado = a.hora_finalizado
+        ? new Date(a.hora_finalizado).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        : null;
 
     let timerStr = '';
     if (a.estado === 'en_atencion' && a.hora_en_atencion) {
@@ -336,6 +360,7 @@ function renderCard(a) {
             <span>CC ${a.numero_identificacion}</span>
             ${tiempoLlegadaFisica ? `<span>Llegó: ${tiempoLlegadaFisica}</span>` : ''}
             ${tiempoAdmisionBiofile ? `<span>Admisionado: ${tiempoAdmisionBiofile}</span>` : ''}
+            ${tiempoFinalizado ? `<span>Finalizado: ${tiempoFinalizado}</span>` : ''}
         </div>
         ${bloqueoBanner}
         <div class="pac-btns">${botones}</div>
@@ -383,6 +408,23 @@ async function cancelarLlamado(id) {
             body: JSON.stringify({ profesional: profesionalActual })
         });
     } catch {}
+    cargarAsignaciones();
+}
+
+// ── Filtro de fecha (historial) ─────────────────────────────────
+(function initFiltroFecha() {
+    const input = document.getElementById('filtro-fecha');
+    const hoy = fechaHoyLocal();
+    input.value = hoy;
+    input.max = hoy; // no permitir días futuros
+    input.addEventListener('change', () => {
+        if (!input.value) input.value = hoy; // evita estado vacío
+        cargarAsignaciones();
+    });
+})();
+
+function volverAHoy() {
+    document.getElementById('filtro-fecha').value = fechaHoyLocal();
     cargarAsignaciones();
 }
 
