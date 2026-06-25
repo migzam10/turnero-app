@@ -4,12 +4,26 @@ const { validarTerminalId } = require('../middleware/validar');
 
 const router = Router();
 
-// GET /api/profesional/asignaciones?profesional=KENDY+ZABALETA
+// Valida que la fecha sea un día calendario real en formato YYYY-MM-DD.
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+function fechaValida(f) {
+    if (typeof f !== 'string' || !FECHA_RE.test(f)) return false;
+    const d = new Date(`${f}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
+}
+
+// GET /api/profesional/asignaciones?profesional=KENDY+ZABALETA[&fecha=YYYY-MM-DD]
+// Sin fecha → día actual (vista en vivo, oculta finalizados).
+// Con fecha pasada → historial completo de ese día (incluye finalizados).
 router.get('/asignaciones', validarTerminalId, async (req, res) => {
-    const { profesional } = req.query;
+    const { profesional, fecha } = req.query;
     if (!profesional) {
         return res.status(400).json({ error: 'Query param profesional requerido' });
     }
+    if (fecha !== undefined && !fechaValida(fecha)) {
+        return res.status(400).json({ error: 'fecha_invalida', detalle: 'Formato esperado YYYY-MM-DD' });
+    }
+    const fechaParam = fecha || null; // null → COALESCE cae a CURRENT_DATE
     try {
         const { rows } = await query(
             `SELECT
@@ -28,28 +42,28 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
                 EXISTS (
                     SELECT 1 FROM asignaciones_profesionales otro
                     WHERE otro.numero_identificacion = ap.numero_identificacion
-                      AND otro.fecha = CURRENT_DATE
+                      AND otro.fecha = COALESCE($2::date, CURRENT_DATE)
                       AND otro.nombre_profesional <> $1
                       AND otro.estado IN ('llamando','en_atencion')
                 ) AS bloqueado,
                 (SELECT otro.area FROM asignaciones_profesionales otro
                  WHERE otro.numero_identificacion = ap.numero_identificacion
-                   AND otro.fecha = CURRENT_DATE
+                   AND otro.fecha = COALESCE($2::date, CURRENT_DATE)
                    AND otro.nombre_profesional <> $1
                    AND otro.estado IN ('llamando','en_atencion')
                  LIMIT 1) AS bloqueado_por
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
                 ON pc.numero_identificacion = ap.numero_identificacion
-               AND pc.fecha = CURRENT_DATE
-             WHERE ap.fecha = CURRENT_DATE
+               AND pc.fecha = COALESCE($2::date, CURRENT_DATE)
+             WHERE ap.fecha = COALESCE($2::date, CURRENT_DATE)
                AND ap.nombre_profesional = $1
-               AND ap.estado <> 'finalizado'
+               AND (ap.estado <> 'finalizado' OR COALESCE($2::date, CURRENT_DATE) <> CURRENT_DATE)
              ORDER BY
                  CASE ap.estado WHEN 'en_atencion' THEN 1 WHEN 'llamando' THEN 2 ELSE 3 END,
                  CASE COALESCE(pc.prioridad,'normal') WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
                  ap.hora_llegada_biofile`,
-            [profesional]
+            [profesional, fechaParam]
         );
         return res.json(rows);
     } catch (err) {
