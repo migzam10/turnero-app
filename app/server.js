@@ -1,3 +1,7 @@
+// Zona horaria del proceso Node: garantiza que cualquier `new Date()` del backend
+// y el parseo de timestamps por node-pg usen hora de Colombia (UTC-5).
+process.env.TZ = 'America/Bogota';
+
 require('dotenv').config();
 const express = require('express');
 const http = require('http');

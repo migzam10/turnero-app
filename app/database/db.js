@@ -9,6 +9,15 @@ const pool = new Pool({
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    // Fija la zona horaria de sesión en el startup de CADA conexión (atómico,
+    // sin condición de carrera y sin hardcodear el nombre de la BD). Asegura que:
+    //   - CURRENT_DATE / fecha DEFAULT CURRENT_DATE usen el día real en Bogotá
+    //     (evita el corrimiento de día después de las 7:00 PM hora local).
+    //   - Los timestamps "naive" de Biofile (p.ej. "Jun 25 2026 7:11AM") insertados
+    //     en columnas TIMESTAMPTZ se interpreten como hora de Bogotá y no como UTC.
+    // Nota: NOW() en columnas TIMESTAMPTZ ya guarda el instante absoluto correcto;
+    // no requiere conversión adicional.
+    options: '-c timezone=America/Bogota',
 });
 
 pool.on('error', (err) => {
