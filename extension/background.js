@@ -69,8 +69,8 @@ function extraerPacientes() {
 
 // Biofile date format: "Jun 9 2026  7:04AM" — hora en Colombia (UTC-5)
 // NO usar new Date() + GMT-0500: V8 ignora el offset cuando el formato es "7:04AM" sin espacio.
-// Parseo manual: convierte Colombia → UTC sumando 5 horas.
-function parseFechaBiofile(str) {
+// Parseo manual de los componentes; devuelve null si el texto no es válido.
+function parsearComponentesBiofile(str) {
     if (!str) return null;
     const m = str.trim().replace(/\s+/g, ' ')
         .match(/^(\w{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -81,13 +81,34 @@ function parseFechaBiofile(str) {
     const mesIdx = MESES[m[1].toLowerCase()];
     if (mesIdx === undefined) return null;
 
+    const dia = parseInt(m[2], 10);
+    const anio = parseInt(m[3], 10);
+    if (dia < 1 || dia > 31) return null;
+
     let h = parseInt(m[4], 10);
     if (m[6].toUpperCase() === 'AM' && h === 12) h = 0;
     if (m[6].toUpperCase() === 'PM' && h !== 12) h += 12;
 
+    return { anio, mesIdx, dia, h, min: parseInt(m[5], 10) };
+}
+
+// "Jun 25 2026 7:11AM" → "2026-06-25T12:11:00.000Z" (instante absoluto, Colombia +5 = UTC)
+function parseFechaBiofile(str) {
+    const c = parsearComponentesBiofile(str);
+    if (!c) return null;
     // Colombia es UTC-5: hora_UTC = hora_Colombia + 5
-    const utc = Date.UTC(parseInt(m[3]), mesIdx, parseInt(m[2]), h + 5, parseInt(m[5]));
+    const utc = Date.UTC(c.anio, c.mesIdx, c.dia, c.h + 5, c.min);
     return isNaN(utc) ? null : new Date(utc).toISOString();
+}
+
+// "Jun 25 2026 7:11AM" → "2026-06-25" (fecha calendario en Colombia, tal cual la muestra Biofile)
+// Se deriva de los componentes crudos, NO del timestamp UTC, para no correr el día en horas PM.
+function fechaLlegadaISO(str) {
+    const c = parsearComponentesBiofile(str);
+    if (!c) return null;
+    const mes = String(c.mesIdx + 1).padStart(2, '0');
+    const dia = String(c.dia).padStart(2, '0');
+    return `${c.anio}-${mes}-${dia}`;
 }
 
 async function getTerminalId() {
@@ -119,9 +140,11 @@ async function ejecutarSync() {
     if (!respuesta) return { error: 'Sin respuesta del script' };
     if (!respuesta.pacientes?.length) return { error: `Sin pacientes en la tabla (loginName: ${respuesta.loginName || 'no encontrado'})` };
 
-    // Normalizar fechas de Biofile a ISO con zona horaria Colombia (UTC-5)
+    // Normalizar cada paciente: fecha calendario (YYYY-MM-DD) y hora de llegada (ISO UTC),
+    // ambas derivadas de la celda "Llegada:" de Biofile, por paciente individual.
     const pacientesNorm = respuesta.pacientes.map(p => ({
         ...p,
+        fecha: fechaLlegadaISO(p.horaLlegadaBiofile),
         horaLlegadaBiofile: parseFechaBiofile(p.horaLlegadaBiofile)
     }));
 
