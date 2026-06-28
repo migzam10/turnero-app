@@ -58,7 +58,7 @@ tr:hover td { background: #f8fafc; }
 /* Badges */
 .badge { display: inline-block; font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
 .b-esperando { background: #f1f5f9; color: var(--gris); }
-.b-llamando  { background: #fef3c7; color: #92400e; }
+.b-llamando { background: #fef3c7; color: #92400e; }
 .b-admisionado { background: #dcfce7; color: var(--verde); }
 .b-pendiente { background: #f1f5f9; color: var(--gris); }
 .b-en_atencion { background: #dbeafe; color: var(--azul2); }
@@ -94,12 +94,36 @@ tr:hover td { background: #f8fafc; }
 
 /* Detalles asignaciones (expandible) */
 .det-asig { font-size: .78rem; color: var(--gris); background: #f8fafc; padding: 6px 10px; border-radius: 6px; margin-top: 4px; display: inline-block; }
+
+/* Login / barrera de acceso */
+.overlay-login { position: fixed; inset: 0; background: var(--azul); display: flex; align-items: center; justify-content: center; z-index: 500; }
+.login-card { background: white; border-radius: 14px; padding: 32px; width: 340px; max-width: 92vw; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+.login-card h2 { color: var(--azul); font-size: 1.25rem; }
+.login-card p { color: var(--gris); font-size: .88rem; }
+.login-input { padding: 11px 14px; border: 2px solid var(--borde); border-radius: 8px; font-size: 1rem; font-family: inherit; }
+.login-input:focus { outline: none; border-color: var(--azul2); }
+.btn-login { background: var(--azul); color: white; border: none; border-radius: 8px; padding: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.btn-login:hover { background: #152e57; }
+.login-error { color: var(--rojo); font-size: .82rem; font-weight: 600; min-height: 1em; }
 </style>
 </head>
 <body>
 
+<!-- Barrera de autenticación -->
+<div class="overlay-login" id="overlay-login">
+    <form class="login-card" onsubmit="autenticar(event)">
+        <h2>Administración</h2>
+        <p>Ingrese la clave de acceso para continuar</p>
+        <input class="login-input" id="login-clave" type="password" autocomplete="off"
+               placeholder="Clave de acceso" autofocus>
+        <div class="login-error" id="login-error"></div>
+        <button class="btn-login" type="submit">Entrar</button>
+    </form>
+</div>
+
+<div class="app-admin" id="app-admin" style="display:none">
 <div class="header">
-    <h1>⚙ Admin — Turnero CertiMedic</h1>
+    <h1>Admin — Turnero CertiMedic</h1>
     <div class="header-right">
         <span id="reloj-admin">--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
@@ -107,11 +131,11 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <div class="tabs">
-    <div class="tab activo" onclick="mostrarTab('dashboard')">📊 Dashboard</div>
-    <div class="tab" onclick="mostrarTab('pacientes')">👥 Pacientes</div>
-    <div class="tab" onclick="mostrarTab('reportes')">📈 Reportes</div>
-    <div class="tab" onclick="mostrarTab('configuracion')">⚙ Configuración</div>
-    <div class="tab" onclick="mostrarTab('terminales')">💻 Terminales</div>
+    <div class="tab activo" data-tab="dashboard" onclick="mostrarTab('dashboard')">Dashboard</div>
+    <div class="tab" data-tab="pacientes" onclick="mostrarTab('pacientes')">Pacientes</div>
+    <div class="tab" data-tab="reportes" onclick="mostrarTab('reportes')">Reportes</div>
+    <div class="tab" data-tab="configuracion" onclick="mostrarTab('configuracion')">Configuración</div>
+    <div class="tab" data-tab="terminales" onclick="mostrarTab('terminales')">Terminales</div>
 </div>
 
 <div class="contenido">
@@ -123,7 +147,7 @@ tr:hover td { background: #f8fafc; }
         <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Estado en tiempo real — Admisiones</span>
-                <button class="btn-actualizar" onclick="cargarDashboard()">↺ Actualizar</button>
+                <button class="btn-actualizar" onclick="cargarDashboard()">Actualizar</button>
             </div>
             <div class="tabla-wrapper"><table id="tabla-admisiones-dash"><tr><td class="loader">Cargando...</td></tr></table></div>
         </div>
@@ -139,7 +163,7 @@ tr:hover td { background: #f8fafc; }
             <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
             <input type="date" id="fecha-pacientes">
             <button class="btn-buscar" onclick="cargarPacientes()">Buscar</button>
-            <button class="btn-exportar" onclick="exportarCSVPacientes()">⬇ CSV</button>
+            <button class="btn-exportar" onclick="exportarCSVPacientes()">CSV</button>
         </div>
         <div class="seccion">
             <div class="seccion-header">
@@ -162,7 +186,7 @@ tr:hover td { background: #f8fafc; }
             <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Hasta:</label>
             <input type="date" id="rep-hasta">
             <button class="btn-buscar" onclick="cargarReporte()">Generar reporte</button>
-            <button class="btn-exportar" onclick="exportarCSVReporte()">⬇ CSV</button>
+            <button class="btn-exportar" onclick="exportarCSVReporte()">CSV</button>
         </div>
         <div id="contenido-reporte"></div>
     </div>
@@ -172,7 +196,7 @@ tr:hover td { background: #f8fafc; }
         <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Parámetros del sistema</span>
-                <button class="btn-actualizar" onclick="cargarConfig()">↺ Recargar</button>
+                <button class="btn-actualizar" onclick="cargarConfig()">Recargar</button>
             </div>
             <div class="config-grid" id="config-grid"><div class="loader">Cargando...</div></div>
         </div>
@@ -183,7 +207,7 @@ tr:hover td { background: #f8fafc; }
         <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Terminales conectados</span>
-                <button class="btn-actualizar" onclick="cargarTerminales()">↺ Actualizar</button>
+                <button class="btn-actualizar" onclick="cargarTerminales()">Actualizar</button>
             </div>
             <div class="tabla-wrapper">
                 <table>
@@ -194,9 +218,69 @@ tr:hover td { background: #f8fafc; }
         </div>
     </div>
 </div>
+</div><!-- /app-admin -->
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+// ── Autenticación ───────────────────────────────────────────────
+let adminToken = null;
+
+// Escapa texto para interpolarlo de forma segura dentro de plantillas innerHTML.
+function esc(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// fetch para endpoints /api/admin/*: adjunta el token de sesión y, si el
+// servidor responde 401, devuelve al usuario a la barrera de acceso.
+async function fetchAdmin(url, opts = {}) {
+    const headers = Object.assign({}, opts.headers);
+    if (adminToken) headers['Authorization'] = 'Bearer ' + adminToken;
+    const resp = await fetch(url, Object.assign({}, opts, { headers }));
+    if (resp.status === 401) {
+        cerrarSesionAdmin();
+        throw new Error('no_autorizado');
+    }
+    return resp;
+}
+
+function cerrarSesionAdmin() {
+    adminToken = null;
+    document.getElementById('app-admin').style.display = 'none';
+    document.getElementById('overlay-login').style.display = '';
+    document.getElementById('login-clave').value = '';
+    document.getElementById('login-clave').focus();
+}
+
+async function autenticar(e) {
+    e.preventDefault();
+    const clave = document.getElementById('login-clave').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    if (!clave) { errEl.textContent = 'Ingrese la clave de acceso'; return; }
+    try {
+        const resp = await fetch('/api/admin/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave })
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            adminToken = data.token;
+            document.getElementById('overlay-login').style.display = 'none';
+            document.getElementById('app-admin').style.display = '';
+            cargarDashboard();
+        } else {
+            errEl.textContent = 'Clave incorrecta';
+            document.getElementById('login-clave').value = '';
+            document.getElementById('login-clave').focus();
+        }
+    } catch {
+        errEl.textContent = 'Error de conexión con el servidor';
+    }
+}
+
 // ── Reloj ───────────────────────────────────────────────────────
 setInterval(() => {
     document.getElementById('reloj-admin').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
@@ -212,12 +296,12 @@ socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove
 
 // ── Tabs ────────────────────────────────────────────────────────
 function mostrarTab(nombre) {
-    document.querySelectorAll('.tab').forEach((t, i) => t.classList.remove('activo'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('activo'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('activo'));
-    const tabs = document.querySelectorAll('.tab');
-    const paneles = { dashboard: 0, pacientes: 1, reportes: 2, configuracion: 3, terminales: 4 };
-    tabs[paneles[nombre]].classList.add('activo');
-    document.getElementById(`panel-${nombre}`).classList.add('activo');
+    const tab = document.querySelector(`.tab[data-tab="${nombre}"]`);
+    const panel = document.getElementById(`panel-${nombre}`);
+    if (tab) tab.classList.add('activo');
+    if (panel) panel.classList.add('activo');
 
     if (nombre === 'dashboard') cargarDashboard();
     if (nombre === 'configuracion') cargarConfig();
@@ -227,12 +311,12 @@ function mostrarTab(nombre) {
 // ── Helpers ─────────────────────────────────────────────────────
 function fmt(n) { return n !== null && n !== undefined ? String(n) : '—'; }
 function horaFmt(ts) { return ts ? new Date(ts).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—'; }
-function fechaHoy() { return new Date().toISOString().split('T')[0]; }
+function fechaHoy() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); }
 
 // ── Dashboard ────────────────────────────────────────────────────
 async function cargarDashboard() {
     try {
-        const resp = await fetch(`/api/admin/resumen-dia?fecha=${fechaHoy()}`);
+        const resp = await fetchAdmin(`/api/admin/resumen-dia?fecha=${fechaHoy()}`);
         const { cola, asignaciones } = await resp.json();
 
         // KPIs
@@ -248,25 +332,25 @@ async function cargarDashboard() {
         `;
 
         // Tabla admisiones
-        const respCola = await fetch('/api/admin/pacientes?fecha=' + fechaHoy());
+        const respCola = await fetchAdmin('/api/admin/pacientes?fecha=' + fechaHoy());
         const pacientes = await respCola.json();
         const enCola = pacientes.filter(p => p.estado_admision !== 'admisionado');
         document.getElementById('tabla-admisiones-dash').innerHTML = `
             <thead><tr><th>Nombre</th><th>Cédula</th><th>Llegada</th><th>Prioridad</th><th>Estado</th></tr></thead>
             <tbody>${enCola.length ? enCola.slice(0,15).map(p => `
-                <tr><td>${p.nombre_completo}</td><td>${p.numero_identificacion}</td>
+                <tr><td>${esc(p.nombre_completo)}</td><td>${esc(p.numero_identificacion)}</td>
                 <td>${horaFmt(p.hora_llegada)}</td>
                 <td><span class="badge b-${p.prioridad}">${p.prioridad}</span></td>
                 <td><span class="badge b-${p.estado_admision}">${p.estado_admision.replace('_',' ')}</span></td></tr>
             `).join('') : '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gris)">Sin pacientes en cola</td></tr>'}</tbody>`;
 
         // Tabla profesionales
-        const resp2 = await fetch(`/api/admin/reporte-detallado?fecha=${fechaHoy()}`);
+        const resp2 = await fetchAdmin(`/api/admin/reporte-detallado?fecha=${fechaHoy()}`);
         const det = await resp2.json();
         document.getElementById('tabla-profesionales-dash').innerHTML = `
             <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>En proceso</th><th>Finalizados</th><th>Prom. atención</th></tr></thead>
             <tbody>${det.por_profesional?.length ? det.por_profesional.map(p => `
-                <tr><td>${p.nombre_profesional}</td><td>${p.area}</td>
+                <tr><td>${esc(p.nombre_profesional)}</td><td>${esc(p.area)}</td>
                 <td>${p.total_asignados}</td>
                 <td>${p.en_proceso||0}</td>
                 <td>${p.finalizados||0}</td>
@@ -284,33 +368,71 @@ async function cargarPacientes() {
     document.getElementById('titulo-pacientes').textContent = `Pacientes — ${fecha}`;
     document.getElementById('tbody-pacientes').innerHTML = '<tr><td colspan="8" class="loader">Cargando...</td></tr>';
     try {
-        const resp = await fetch(`/api/admin/pacientes?fecha=${fecha}`);
+        const resp = await fetchAdmin(`/api/admin/pacientes?fecha=${fecha}`);
         dataPacientes = await resp.json();
         renderTablaPacientes(dataPacientes);
     } catch {}
 }
 
+// Helpers de construcción de DOM seguros (sin innerHTML para datos del usuario).
+function celda(texto) {
+    const td = document.createElement('td');
+    td.textContent = texto ?? '—';
+    return td;
+}
+function badge(clase, texto) {
+    const span = document.createElement('span');
+    span.className = 'badge b-' + clase;
+    span.textContent = texto;
+    return span;
+}
+
 function renderTablaPacientes(lista) {
     const tbody = document.getElementById('tbody-pacientes');
+    tbody.textContent = '';
     if (!lista.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--gris)">Sin registros</td></tr>';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 8;
+        td.style.cssText = 'text-align:center;padding:30px;color:var(--gris)';
+        td.textContent = 'Sin registros';
+        tr.appendChild(td); tbody.appendChild(tr);
         return;
     }
-    tbody.innerHTML = lista.map(p => {
-        const asigs = (p.asignaciones || []).map(a =>
-            `<span class="det-asig">${a.profesional} (${a.area}) · <span class="badge b-${a.estado}">${a.estado}</span></span> `
-        ).join('');
-        return `<tr>
-            <td>${p.numero_identificacion}</td>
-            <td>${p.nombre_completo}</td>
-            <td>${horaFmt(p.hora_llegada)}</td>
-            <td><span class="badge b-${p.prioridad}">${p.prioridad}</span></td>
-            <td><span class="badge b-${p.estado_admision}">${p.estado_admision.replace('_',' ')}</span></td>
-            <td>${p.modulo_admision || '—'}</td>
-            <td>${horaFmt(p.hora_admision)}</td>
-            <td>${asigs || '—'}</td>
-        </tr>`;
-    }).join('');
+    lista.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.appendChild(celda(p.numero_identificacion));
+        tr.appendChild(celda(p.nombre_completo));
+        tr.appendChild(celda(horaFmt(p.hora_llegada)));
+
+        const tdPrio = document.createElement('td');
+        tdPrio.appendChild(badge(p.prioridad, p.prioridad));
+        tr.appendChild(tdPrio);
+
+        const tdEstado = document.createElement('td');
+        tdEstado.appendChild(badge(p.estado_admision, String(p.estado_admision).replace('_', ' ')));
+        tr.appendChild(tdEstado);
+
+        tr.appendChild(celda(p.modulo_admision || '—'));
+        tr.appendChild(celda(horaFmt(p.hora_admision)));
+
+        const tdAsig = document.createElement('td');
+        const asigs = p.asignaciones || [];
+        if (!asigs.length) {
+            tdAsig.textContent = '—';
+        } else {
+            asigs.forEach(a => {
+                const wrap = document.createElement('span');
+                wrap.className = 'det-asig';
+                wrap.appendChild(document.createTextNode(`${a.profesional} (${a.area}) · `));
+                wrap.appendChild(badge(a.estado, a.estado));
+                tdAsig.appendChild(wrap);
+                tdAsig.appendChild(document.createTextNode(' '));
+            });
+        }
+        tr.appendChild(tdAsig);
+        tbody.appendChild(tr);
+    });
 }
 
 function exportarCSVPacientes() {
@@ -339,7 +461,7 @@ async function cargarReporte() {
     if (desde === hasta) {
         // Reporte detallado de un día
         try {
-            const resp = await fetch(`/api/admin/reporte-detallado?fecha=${desde}`);
+            const resp = await fetchAdmin(`/api/admin/reporte-detallado?fecha=${desde}`);
             const data = await resp.json();
             dataReporte = data;
             el.innerHTML = renderReporteDetallado(data);
@@ -347,7 +469,7 @@ async function cargarReporte() {
     } else {
         // Reporte rango
         try {
-            const resp = await fetch(`/api/admin/reporte-rango?desde=${desde}&hasta=${hasta}`);
+            const resp = await fetchAdmin(`/api/admin/reporte-rango?desde=${desde}&hasta=${hasta}`);
             const data = await resp.json();
             dataReporte = data;
             el.innerHTML = renderReporteRango(data);
@@ -369,7 +491,7 @@ function renderReporteDetallado(data) {
             <div class="tabla-wrapper"><table>
                 <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>Finalizados</th><th>En proceso</th><th>Pend.</th><th>Prom. atención</th><th>Min.</th><th>Max.</th></tr></thead>
                 <tbody>${(data.por_profesional||[]).map(p => `
-                    <tr><td>${p.nombre_profesional}</td><td>${p.area}</td>
+                    <tr><td>${esc(p.nombre_profesional)}</td><td>${esc(p.area)}</td>
                     <td>${p.total_asignados}</td><td>${p.finalizados||0}</td><td>${p.en_proceso||0}</td><td>${p.pendientes||0}</td>
                     <td>${p.avg_min_atencion ? p.avg_min_atencion + ' min' : '—'}</td>
                     <td>${p.min_min_atencion ? p.min_min_atencion + ' min' : '—'}</td>
@@ -378,11 +500,11 @@ function renderReporteDetallado(data) {
             </table></div>
         </div>
         <div class="seccion" style="margin-bottom:16px">
-            <div class="seccion-header"><span class="seccion-titulo">Timeline T1→T5 por paciente</span></div>
+            <div class="seccion-header"><span class="seccion-titulo">Timeline T1T5 por paciente</span></div>
             <div class="tabla-wrapper"><table>
                 <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Min. espera</th><th>Min. total</th></tr></thead>
                 <tbody>${(data.timeline||[]).map(p => `
-                    <tr><td>${p.cedula}</td><td>${p.paciente}</td>
+                    <tr><td>${esc(p.cedula)}</td><td>${esc(p.paciente)}</td>
                     <td>${horaFmt(p.t1_llegada)}</td><td>${horaFmt(p.t2_sistema)}</td>
                     <td>${horaFmt(p.t3_primer_llamado)}</td><td>${horaFmt(p.t4_primera_atencion)}</td>
                     <td>${horaFmt(p.t5_ultima_finalizacion)}</td>
@@ -397,11 +519,11 @@ function renderReporteDetallado(data) {
                 <thead><tr><th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Estado</th><th>Llegada Biofile</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
                 <tbody>${(data.asignaciones||[]).map(a => `
                     <tr>
-                        <td>${a.cedula}</td>
-                        <td>${a.nombre}</td>
-                        <td>${a.nombre_profesional}</td>
-                        <td>${a.area}</td>
-                        <td><span class="badge b-${a.estado}">${a.estado}</span></td>
+                        <td>${esc(a.cedula)}</td>
+                        <td>${esc(a.nombre)}</td>
+                        <td>${esc(a.nombre_profesional)}</td>
+                        <td>${esc(a.area)}</td>
+                        <td><span class="badge b-${esc(a.estado)}">${esc(a.estado)}</span></td>
                         <td>${horaFmt(a.hora_llegada_biofile)}</td>
                         <td>${horaFmt(a.hora_llamado)}</td>
                         <td>${horaFmt(a.hora_finalizado)}</td>
@@ -418,7 +540,7 @@ function renderReporteRango(data) {
         <div class="tabla-wrapper"><table>
             <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Prom. atención</th><th>Espera prom.</th></tr></thead>
             <tbody>${(data.datos||[]).map(r => `
-                <tr><td>${r.fecha}</td><td>${r.nombre_profesional}</td><td>${r.area}</td>
+                <tr><td>${esc(r.fecha)}</td><td>${esc(r.nombre_profesional)}</td><td>${esc(r.area)}</td>
                 <td>${r.pacientes_atendidos||0}</td>
                 <td>${r.avg_min_atencion ? r.avg_min_atencion + ' min' : '—'}</td>
                 <td>${r.avg_espera_admision ? r.avg_espera_admision + ' min' : '—'}</td></tr>
@@ -445,32 +567,65 @@ function exportarCSVReporte() {
 
 // ── Configuración ─────────────────────────────────────────────
 async function cargarConfig() {
+    const grid = document.getElementById('config-grid');
+    grid.textContent = '';
     try {
-        const resp = await fetch('/api/admin/config');
+        const resp = await fetchAdmin('/api/admin/config');
         const configs = await resp.json();
-        document.getElementById('config-grid').innerHTML = configs.map(c => `
-            <div class="config-item">
-                <div class="config-key">${c.clave}</div>
-                <input class="config-val" id="cfg-${c.clave}" value="${c.valor || ''}">
-                <div class="config-desc">${c.descripcion || ''}</div>
-                <button class="btn-guardar-config" onclick="guardarConfig('${c.clave}')">Guardar</button>
-            </div>
-        `).join('');
+        configs.forEach(c => {
+            const item = document.createElement('div');
+            item.className = 'config-item';
+
+            const key = document.createElement('div');
+            key.className = 'config-key';
+            key.textContent = c.clave;
+
+            const input = document.createElement('input');
+            input.className = 'config-val';
+            input.id = 'cfg-' + c.clave;
+            if (c.sensible) {
+                // El valor real nunca llega al cliente; vacío = "sin cambios".
+                input.type = 'password';
+                input.placeholder = '(sin cambios)';
+                input.value = '';
+            } else {
+                input.value = c.valor || '';
+            }
+
+            const desc = document.createElement('div');
+            desc.className = 'config-desc';
+            desc.textContent = c.descripcion || '';
+
+            const btn = document.createElement('button');
+            btn.className = 'btn-guardar-config';
+            btn.dataset.clave = c.clave;
+            btn.textContent = 'Guardar';
+            btn.addEventListener('click', () => guardarConfig(c.clave, btn));
+
+            item.append(key, input, desc, btn);
+            grid.appendChild(item);
+        });
     } catch {}
 }
 
-async function guardarConfig(clave) {
-    const valor = document.getElementById(`cfg-${clave}`).value;
+async function guardarConfig(clave, btn) {
+    const valor = document.getElementById('cfg-' + clave).value;
+    // Para claves sensibles, un valor vacío significa "no cambiar".
+    if (valor === '' && btn && btn.previousElementSibling) {
+        const input = document.getElementById('cfg-' + clave);
+        if (input && input.type === 'password') return;
+    }
     try {
-        const resp = await fetch('/api/admin/config', {
+        const resp = await fetchAdmin('/api/admin/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ clave, valor })
         });
         if (resp.ok) {
-            const el = document.querySelector(`[onclick="guardarConfig('${clave}')"]`);
+            const el = btn || document.querySelector(`.btn-guardar-config[data-clave="${CSS.escape(clave)}"]`);
+            if (!el) return;
             const txt = el.textContent;
-            el.textContent = '✓ Guardado';
+            el.textContent = 'Guardado';
             el.style.background = '#15803d';
             setTimeout(() => { el.textContent = txt; el.style.background = ''; }, 2000);
         }
@@ -480,7 +635,7 @@ async function guardarConfig(clave) {
 // ── Terminales ────────────────────────────────────────────────
 async function cargarTerminales() {
     try {
-        const resp = await fetch('/api/admin/terminales');
+        const resp = await fetchAdmin('/api/admin/terminales');
         const terminales = await resp.json();
         const tbody = document.getElementById('tbody-terminales');
         if (!terminales.length) {
@@ -493,10 +648,10 @@ async function cargarTerminales() {
             const activo = segs < 120;
             const tiempoStr = ultimoHB ? ultimoHB.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
             return `<tr>
-                <td style="font-family:monospace;font-size:.78rem">${t.id?.slice(0,12)||'—'}…</td>
-                <td><span class="badge b-${t.tipo}">${t.tipo}</span></td>
-                <td>${t.consultorio_numero || '—'}</td>
-                <td>${t.login_name_biofile || '—'}</td>
+                <td style="font-family:monospace;font-size:.78rem">${esc(t.id?.slice(0,12)||'—')}…</td>
+                <td><span class="badge b-${esc(t.tipo)}">${esc(t.tipo)}</span></td>
+                <td>${esc(t.consultorio_numero || '—')}</td>
+                <td>${esc(t.login_name_biofile || '—')}</td>
                 <td>${tiempoStr}</td>
                 <td class="${activo ? 'terminal-activo' : 'terminal-inactivo'}">${activo ? '● Activo' : '○ Inactivo'}</td>
             </tr>`;
@@ -514,7 +669,8 @@ function descargarCSV(filas, nombre) {
 }
 
 // ── Init ─────────────────────────────────────────────────────
-cargarDashboard();
+// El dashboard se carga únicamente tras superar la barrera de acceso (ver autenticar()).
+document.getElementById('login-clave').focus();
 </script>
 </body>
 </html>
