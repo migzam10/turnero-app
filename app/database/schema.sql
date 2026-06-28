@@ -84,14 +84,20 @@ CREATE TABLE IF NOT EXISTS configuracion (
 );
 
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
-    ('modulos_admisiones',      '["Módulo 1","Módulo 2","Módulo 3"]',
-     'JSON array de nombres de módulos de admisiones'),
+    ('cantidad_modulos_admisiones', '3',
+     'Cantidad de módulos de admisiones disponibles para asignar a una terminal'),
+    ('clave_admin',             '2026',
+     'Clave alfanumérica de acceso al módulo de Administración'),
     ('sonido_habilitado',       'true',
      'Habilitar sonido en pantallas TV'),
     ('intervalo_extension_seg', '60',
      'Intervalo de sincronización de la extensión en segundos'),
     ('dias_retener_datos',      '7',
      'Días de retención de datos operativos'),
+    ('titulo_sufijo',           'Turnero CertiMedic',
+     'Texto personalizado que acompaña el nombre de cada módulo en el título'),
+    ('display_logo',            '',
+     'Logo del Display en formato data URL (vacío = ícono por defecto)'),
     ('version_db',              '1',
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;
@@ -114,3 +120,7 @@ ALTER TABLE asignaciones_profesionales
 -- Nombre del paciente desde Biofile (v3) — necesario cuando no hay registro en pacientes_cola
 ALTER TABLE asignaciones_profesionales
     ADD COLUMN IF NOT EXISTS nombre_paciente VARCHAR(150);
+
+-- Sexo del paciente (v4) — capturado en el formulario de recepción (M/F)
+ALTER TABLE pacientes_cola
+    ADD COLUMN IF NOT EXISTS sexo VARCHAR(1) CHECK (sexo IN ('M','F'));

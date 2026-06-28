@@ -32,28 +32,31 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-setup:hover { background: #152e57; }
 
 /* Layout */
-.layout { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 0; overflow: hidden; }
+.layout { flex: 1; display: flex; overflow: hidden; }
 
 /* Lista de espera */
-.panel-cola { padding: 16px; overflow-y: auto; }
+.panel-cola { flex: 1; padding: 16px 24px; overflow-y: auto; width: 100%; }
 .panel-titulo { font-weight: 700; color: var(--azul); font-size: .95rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .count-badge { background: var(--azul); color: white; font-size: .7rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; }
 
-.pac-card { background: var(--card); border-radius: 10px; border: 1.5px solid var(--borde); padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; transition: all .2s; }
+.pac-card { background: var(--card); border-radius: 12px; border: 1.5px solid var(--borde); padding: 18px 20px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 14px; transition: all .2s; }
 .pac-card:hover { border-color: #93c5fd; box-shadow: 0 2px 8px rgba(37,99,235,.08); }
 .pac-card.activo { border-color: var(--naranja); background: #fffbeb; }
 
-.pri-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pac-top { display: flex; align-items: center; gap: 14px; }
+.pri-dot { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; }
 .pri-normal { background: #94a3b8; }
-.pri-media  { background: var(--naranja); }
-.pri-alta   { background: var(--rojo); }
+.pri-media { background: var(--naranja); }
+.pri-alta { background: var(--rojo); }
 
 .pac-info { flex: 1; min-width: 0; }
-.pac-nombre { font-weight: 700; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pac-sub { font-size: .75rem; color: var(--gris); margin-top: 2px; }
+.pac-nombre { font-weight: 700; font-size: 1.05rem; }
+.pac-sub { font-size: .85rem; color: var(--gris); margin-top: 3px; }
 
-.pac-btns { display: flex; gap: 6px; flex-shrink: 0; }
-.btn-sm { padding: 5px 10px; border-radius: 6px; border: none; font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .2s; }
+.pac-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-sm { padding: 9px 18px; border-radius: 8px; border: none; font-size: .9rem; font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+.btn-sm:disabled:hover { background: var(--azul); }
 .btn-ver { background: #eff6ff; color: var(--azul2); border: 1px solid #bfdbfe; }
 .btn-ver:hover { background: #dbeafe; }
 .btn-llamar { background: var(--azul); color: white; }
@@ -63,16 +66,10 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-sm.btn-admisionar:hover { background: #15803d; }
 .btn-sm.btn-devolver { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
 .btn-sm.btn-devolver:hover { background: #fef08a; }
+.btn-sm.btn-sonar { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
+.btn-sm.btn-sonar:hover { background: #ddd6fe; }
 
 .vacia { text-align: center; padding: 50px 16px; color: var(--gris); }
-
-/* Panel derecho - en proceso */
-.panel-enproceso { background: var(--card); border-left: 1px solid var(--borde); padding: 16px; overflow-y: auto; }
-.enproceso-item { background: #fff7ed; border: 2px solid var(--naranja); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-.ep-modulo { font-size: .72rem; font-weight: 700; color: var(--naranja); text-transform: uppercase; letter-spacing: .05em; }
-.ep-nombre { font-weight: 700; font-size: .95rem; margin: 4px 0 8px; }
-.ep-meta { font-size: .75rem; color: var(--gris); margin-bottom: 10px; }
-.ep-btns { display: flex; gap: 6px; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 300; display: none; align-items: center; justify-content: center; }
@@ -96,16 +93,16 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .prioridad-row { display: flex; gap: 8px; margin-top: 10px; }
 .prioridad-btn { flex: 1; padding: 7px; border-radius: 7px; border: 2px solid var(--borde); background: white; cursor: pointer; font-size: .78rem; font-weight: 600; }
 .prioridad-btn[data-val="normal"].activo { border-color: var(--verde); background: #dcfce7; color: var(--verde); }
-.prioridad-btn[data-val="media"].activo  { border-color: var(--naranja); background: #fef3c7; color: var(--naranja); }
-.prioridad-btn[data-val="alta"].activo   { border-color: var(--rojo); background: #fee2e2; color: var(--rojo); }
+.prioridad-btn[data-val="media"].activo { border-color: var(--naranja); background: #fef3c7; color: var(--naranja); }
+.prioridad-btn[data-val="alta"].activo { border-color: var(--rojo); background: #fee2e2; color: var(--rojo); }
 </style>
 </head>
-<body>
+<body data-modulo="Admisiones">
 
 <!-- Setup overlay -->
 <div class="overlay-setup" id="overlay-setup">
     <div class="setup-card">
-        <h2>🏥 Módulo de Admisiones</h2>
+        <h2>Módulo de Admisiones</h2>
         <p>Seleccione el módulo asignado a esta terminal para comenzar</p>
         <select class="setup-select" id="select-modulo">
             <option value="">Cargando módulos...</option>
@@ -116,12 +113,13 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 
 <div class="header">
     <div class="header-left">
-        <h1>🏥 Admisiones — Turnero CertiMedic</h1>
+        <h1 data-titulo-base="Admisiones">Admisiones — Turnero CertiMedic</h1>
         <span class="modulo-badge" id="modulo-badge" onclick="cambiarModulo()" title="Clic para cambiar módulo">—</span>
     </div>
     <div class="header-right">
         <span id="reloj">--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
+        <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
 
@@ -134,12 +132,6 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         </div>
         <div id="lista-espera"></div>
     </div>
-
-    <!-- En proceso -->
-    <div class="panel-enproceso">
-        <div class="panel-titulo">En proceso <span class="count-badge" id="count-enproceso">0</span></div>
-        <div id="lista-enproceso"></div>
-    </div>
 </div>
 
 <!-- Modal datos paciente -->
@@ -147,21 +139,19 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     <div class="modal">
         <div class="modal-titulo" id="modal-pac-nombre">—</div>
         <div class="datos-grid" id="modal-datos-grid"></div>
-        <button class="btn-copiar" id="btn-copiar" onclick="copiarParaBiofile()">
-            📋 Copiar datos para Biofile (Tab)
-        </button>
         <div>
             <div style="font-size:.75rem;font-weight:600;color:var(--gris);text-transform:uppercase;margin-bottom:6px">Prioridad</div>
             <div class="prioridad-row" id="modal-pri-row"></div>
         </div>
         <div class="modal-footer">
-            <button class="btn-sm btn-llamar" style="flex:1;padding:9px;" onclick="llamarDesdeModal()">📢 Llamar</button>
+            <button class="btn-sm btn-llamar" style="flex:1;padding:9px;" onclick="llamarDesdeModal()">Llamar</button>
             <button class="btn-outline" onclick="cerrarModal()">Cerrar</button>
         </div>
     </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/branding.js"></script>
 <script>
 const TERMINAL_ID = (() => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -179,6 +169,9 @@ const TERMINAL_ID = (() => {
 let moduloActual = localStorage.getItem('modulo_admisiones') || '';
 let pacienteModalData = null;
 let colaActual = [];
+// Bloqueo de concurrencia: true mientras hay un "Llamar" en vuelo, para que el
+// operador no pueda lanzar dos llamados simultáneos antes de la respuesta.
+let llamadoEnCurso = false;
 
 // ── Reloj ───────────────────────────────────────────────────────
 function actualizarReloj() {
@@ -195,11 +188,12 @@ socket.on('connect', () => {
     cargarCola();
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
-socket.on('paciente:nuevo',     () => cargarCola());
+socket.on('paciente:nuevo', () => cargarCola());
 socket.on('paciente:prioridad', () => cargarCola());
-socket.on('admision:llamando',  () => cargarCola());
+socket.on('admision:llamando', () => cargarCola());
 socket.on('admision:completada',() => cargarCola());
-socket.on('admision:devuelto',  () => cargarCola());
+socket.on('admision:devuelto', () => cargarCola());
+socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 
 // ── Setup módulo ────────────────────────────────────────────────
 async function cargarModulos() {
@@ -229,6 +223,12 @@ function cambiarModulo() {
     document.getElementById('overlay-setup').style.display = 'flex';
 }
 
+// Botón "Salir": limpia el módulo seleccionado y vuelve al menú principal.
+function salir() {
+    localStorage.removeItem('modulo_admisiones');
+    window.location.href = '/';
+}
+
 // ── Cola ────────────────────────────────────────────────────────
 async function cargarCola() {
     if (!moduloActual) return;
@@ -240,56 +240,76 @@ async function cargarCola() {
 }
 
 function renderCola() {
-    const espera = colaActual.filter(p => p.estado_admision === 'esperando');
-    const enProceso = colaActual.filter(p => p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual);
+    // Render in-place (homologado con Profesionales): la cola muestra los pacientes
+    // en espera y, en su misma fila, el que ESTE módulo tenga en proceso. Los pacientes
+    // que están siendo procesados por otro módulo no se muestran en esta terminal.
+    const visibles = colaActual.filter(p =>
+        p.estado_admision === 'esperando' ||
+        (p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual)
+    );
+    const espera = visibles.filter(p => p.estado_admision === 'esperando');
+    const enProceso = visibles.filter(p => p.estado_admision === 'llamando_admision');
 
     document.getElementById('count-espera').textContent = espera.length;
-    document.getElementById('count-enproceso').textContent = enProceso.length;
 
-    // Render espera
+    // Bloqueo de concurrencia: si este módulo ya tiene un paciente en proceso
+    // (o hay un llamado en vuelo), se inhabilita "Llamar" hasta que ese paciente
+    // pase a "Admisionado" o "Cancelado".
+    const bloquearLlamar = enProceso.length > 0 || llamadoEnCurso;
+
     const listaEl = document.getElementById('lista-espera');
-    if (!espera.length) {
+    if (!visibles.length) {
         listaEl.innerHTML = '<div class="vacia">No hay pacientes en espera</div>';
-    } else {
-        listaEl.innerHTML = espera.map(p => {
-            const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-            return `<div class="pac-card">
+        return;
+    }
+
+    listaEl.innerHTML = visibles.map(p => {
+        const activo = p.estado_admision === 'llamando_admision';
+        const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+
+        // Al "Llamar", la fila no se mueve: solo cambian sus controles. Un paciente
+        // en proceso muestra "Sonar" (reenvía la alerta) más las acciones de cierre.
+        const botones = activo
+            ? `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+               <button class="btn-sm btn-sonar" onclick="sonarPaciente('${p.id}')" title="Volver a sonar la alerta en el display">Sonar</button>
+               <button class="btn-sm btn-admisionar" onclick="admisionarPaciente('${p.id}')">Admisionado</button>
+               <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">Cancelar</button>`
+            : `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+               <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')" ${bloquearLlamar ? 'disabled' : ''}>Llamar</button>`;
+
+        return `<div class="pac-card${activo ? ' activo' : ''}">
+            <div class="pac-top">
                 <div class="pri-dot pri-${p.prioridad}"></div>
                 <div class="pac-info">
                     <div class="pac-nombre">${p.nombre_completo}</div>
                     <div class="pac-sub">${p.numero_identificacion} · ${hora}</div>
                 </div>
-                <div class="pac-btns">
-                    <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
-                    <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')">📢 Llamar</button>
-                </div>
-            </div>`;
-        }).join('');
-    }
+            </div>
+            <div class="pac-btns">${botones}</div>
+        </div>`;
+    }).join('');
+}
 
-    // Render en proceso
-    const epEl = document.getElementById('lista-enproceso');
-    if (!enProceso.length) {
-        epEl.innerHTML = '<div class="vacia" style="font-size:.85rem">Ningún paciente en proceso<br>en este módulo</div>';
-    } else {
-        epEl.innerHTML = enProceso.map(p => {
-            const hora = p.hora_llamado_admision ? new Date(p.hora_llamado_admision).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-            return `<div class="enproceso-item">
-                <div class="ep-modulo">${p.modulo_admision || moduloActual}</div>
-                <div class="ep-nombre">${p.nombre_completo}</div>
-                <div class="ep-meta">CC ${p.numero_identificacion} · Llamado ${hora}</div>
-                <div class="ep-btns">
-                    <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
-                    <button class="btn-sm btn-admisionar" onclick="admisionarPaciente('${p.id}')">✓ Admisionado</button>
-                    <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">✗ No vino</button>
-                </div>
-            </div>`;
-        }).join('');
-    }
+// Reenvía la alerta de audio/display del paciente ya llamado por este módulo.
+function sonarPaciente(id) {
+    const p = colaActual.find(x => x.id === id);
+    if (!p) return;
+    socket.emit('admision:sonar', p);
 }
 
 // ── Acciones ────────────────────────────────────────────────────
+// ¿Este módulo ya tiene un paciente en proceso (llamado y aún sin admisionar/cancelar)?
+function moduloOcupado() {
+    return colaActual.some(p => p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual);
+}
+
 async function llamarPaciente(id) {
+    // No permitir dos llamados simultáneos ni un nuevo llamado con el módulo ocupado.
+    if (llamadoEnCurso || moduloOcupado()) return;
+    llamadoEnCurso = true;
+    // Deshabilitación inmediata de todos los botones "Llamar" (sin esperar al servidor).
+    document.querySelectorAll('.btn-llamar').forEach(b => { b.disabled = true; });
+
     try {
         const resp = await fetch(`/api/admisiones/llamar/${id}`, {
             method: 'POST',
@@ -297,8 +317,14 @@ async function llamarPaciente(id) {
             body: JSON.stringify({ modulo: moduloActual })
         });
         if (!resp.ok) { const d = await resp.json(); alert(d.error === 'estado_invalido' ? 'El paciente ya fue llamado' : d.error); }
-        else cargarCola();
-    } catch {}
+    } catch {
+        alert('Error de conexión con el servidor');
+    } finally {
+        // El re-render por estado mantiene el bloqueo si el paciente quedó "en proceso";
+        // si el llamado falló, los botones se rehabilitan al no haber paciente en proceso.
+        llamadoEnCurso = false;
+        cargarCola();
+    }
 }
 
 async function admisionarPaciente(id) {
@@ -345,42 +371,10 @@ async function verPaciente(id) {
     // Prioridad
     const priRow = document.getElementById('modal-pri-row');
     priRow.innerHTML = ['normal','media','alta'].map(v =>
-        `<button class="prioridad-btn${p.prioridad===v?' activo':''}" data-val="${v}" onclick="cambiarPrioridadModal('${p.id}','${v}')">${v==='alta'?'🔴 ':v==='media'?'⚡ ':''}${v.charAt(0).toUpperCase()+v.slice(1)}</button>`
+        `<button class="prioridad-btn${p.prioridad===v?' activo':''}" data-val="${v}" onclick="cambiarPrioridadModal('${p.id}','${v}')">${v==='alta'?'':v==='media'?'':''}${v.charAt(0).toUpperCase()+v.slice(1)}</button>`
     ).join('');
 
-    // Reset botón copiar
-    const btnCopiar = document.getElementById('btn-copiar');
-    btnCopiar.textContent = '📋 Copiar datos para Biofile (Tab)';
-    btnCopiar.classList.remove('copiado');
-
     document.getElementById('modal-paciente').classList.add('visible');
-}
-
-async function copiarParaBiofile() {
-    if (!pacienteModalData) return;
-    try {
-        const resp = await fetch(`/api/admisiones/datos-pegado/${pacienteModalData.id}`, {
-            headers: { 'X-Terminal-Id': TERMINAL_ID }
-        });
-        if (!resp.ok) return;
-        const { tabString } = await resp.json();
-        await navigator.clipboard.writeText(tabString);
-        const btn = document.getElementById('btn-copiar');
-        btn.textContent = '✓ Copiado — pegar en Biofile con Ctrl+V';
-        btn.classList.add('copiado');
-    } catch {
-        // Fallback si clipboard API no está disponible
-        const tabString = [
-            pacienteModalData.numero_identificacion,
-            pacienteModalData.ciudad_expedicion || '',
-            pacienteModalData.fecha_nacimiento ? new Date(pacienteModalData.fecha_nacimiento + 'T12:00:00').toLocaleDateString('es-CO') : '',
-            pacienteModalData.primer_apellido || '',
-            pacienteModalData.segundo_apellido || '',
-            pacienteModalData.primer_nombre || '',
-            pacienteModalData.segundo_nombre || ''
-        ].join('\t');
-        prompt('Copie estos datos y péguelos en Biofile:', tabString);
-    }
 }
 
 async function llamarDesdeModal() {

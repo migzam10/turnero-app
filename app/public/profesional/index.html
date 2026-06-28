@@ -80,8 +80,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 
 .pac-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn-accion { padding: 7px 16px; border-radius: 7px; border: none; font-size: .82rem; font-weight: 700; cursor: pointer; transition: all .2s; }
-.btn-llamar   { background: var(--azul); color: white; }
-.btn-llamar:hover   { background: #152e57; }
+.btn-llamar { background: var(--azul); color: white; }
+.btn-llamar:hover { background: #152e57; }
 .btn-atencion { background: var(--verde); color: white; }
 .btn-atencion:hover { background: #15803d; }
 .btn-finalizar { background: #7c3aed; color: white; }
@@ -98,12 +98,12 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .timer-atencion { font-size: .78rem; color: var(--azul2); font-weight: 600; background: #dbeafe; padding: 2px 8px; border-radius: 6px; }
 </style>
 </head>
-<body>
+<body data-modulo="Profesional">
 
 <!-- Setup -->
 <div class="overlay-setup" id="overlay-setup">
     <div class="setup-card">
-        <h2>👨‍⚕️ Módulo Profesional</h2>
+        <h2>Módulo Profesional</h2>
         <p>Configure sus datos de acceso. El nombre debe coincidir exactamente con Biofile.</p>
         <div class="campo-grupo">
             <label class="campo-label">Nombre en Biofile *</label>
@@ -111,7 +111,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
             <ul class="sugerencias" id="sugerencias"></ul>
         </div>
         <div class="campo-grupo">
-            <label class="campo-label">Número de consultorio *</label>
+            <label class="campo-label">Consultorio *</label>
             <input class="campo-input" id="input-consultorio" placeholder="Ej: 5" maxlength="10">
         </div>
         <button class="btn-setup" onclick="confirmarSetup()">Entrar al módulo</button>
@@ -127,7 +127,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <input type="date" id="filtro-fecha" class="filtro-fecha" title="Ver asignaciones de otro día">
         <button class="btn-config" id="btn-hoy" onclick="volverAHoy()" style="display:none">Hoy</button>
         <span id="reloj">--:--</span>
-        <button class="btn-config" onclick="abrirSetup()">⚙ Cambiar</button>
+        <button class="btn-config" onclick="abrirSetup()">Cambiar</button>
+        <button class="btn-config" onclick="cerrarSesion()">Salir</button>
         <div class="dot-ws" id="dot-ws"></div>
     </div>
 </div>
@@ -144,6 +145,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/branding.js"></script>
 <script>
 const TERMINAL_ID = (() => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -179,20 +181,22 @@ socket.on('connect', () => {
     }
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
-socket.on('asignacion:llamando',    () => cargarAsignaciones());
+socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
+socket.on('asignacion:llamando', () => cargarAsignaciones());
 socket.on('asignacion:en_atencion', () => cargarAsignaciones());
-socket.on('asignacion:finalizado',  () => cargarAsignaciones());
-socket.on('asignacion:cancelado',   () => cargarAsignaciones());
-socket.on('extension:sync',         () => cargarAsignaciones());
+socket.on('asignacion:finalizado', () => cargarAsignaciones());
+socket.on('asignacion:cancelado', () => cargarAsignaciones());
+socket.on('extension:sync', () => cargarAsignaciones());
 
 // ── Setup ───────────────────────────────────────────────────────
 async function buscarProfesional(texto) {
     const lista = document.getElementById('sugerencias');
-    if (texto.length < 2) { lista.classList.remove('visible'); return; }
+    // Despliega la lista desde el primer carácter escrito.
+    if (texto.trim().length < 1) { lista.classList.remove('visible'); return; }
     try {
         const resp = await fetch('/api/profesional/listado-profesionales');
         const todos = await resp.json();
-        const filtrados = todos.filter(n => n.toUpperCase().includes(texto.toUpperCase()));
+        const filtrados = todos.filter(n => n.toUpperCase().includes(texto.trim().toUpperCase()));
         if (filtrados.length) {
             lista.innerHTML = filtrados.map(n => `<li onclick="seleccionarProf('${n}')">${n}</li>`).join('');
             lista.classList.add('visible');
@@ -232,10 +236,27 @@ function abrirSetup() {
     document.getElementById('overlay-setup').style.display = 'flex';
 }
 
+// Cierra la sesión del profesional: limpia los datos guardados y vuelve a la
+// pantalla de configuración (misma acción que el botón "Cambiar").
+function cerrarSesion() {
+    profesionalActual = '';
+    consultorioActual = '';
+    asignaciones = [];
+    localStorage.removeItem('profesional_nombre');
+    localStorage.removeItem('profesional_consultorio');
+
+    document.getElementById('header-profesional').textContent = '—';
+    document.getElementById('header-consultorio').textContent = 'Consultorio —';
+    document.getElementById('input-profesional').value = '';
+    document.getElementById('input-consultorio').value = '';
+    document.getElementById('lista-asignaciones').innerHTML = '';
+    document.getElementById('overlay-setup').style.display = 'flex';
+}
+
 // ── Asignaciones ────────────────────────────────────────────────
 // Fecha de hoy en formato YYYY-MM-DD (zona local del navegador = Bogotá)
 function fechaHoyLocal() {
-    return new Date().toLocaleDateString('en-CA'); // en-CA → YYYY-MM-DD
+    return new Date().toLocaleDateString('en-CA'); // en-CA YYYY-MM-DD
 }
 
 async function cargarAsignaciones() {
@@ -262,17 +283,17 @@ function renderAsignaciones() {
     const lista = document.getElementById('lista-asignaciones');
 
     const pendientes = asignaciones.filter(a => a.estado === 'pendiente');
-    const llamando   = asignaciones.filter(a => a.estado === 'llamando');
+    const llamando = asignaciones.filter(a => a.estado === 'llamando');
     const enAtencion = asignaciones.filter(a => a.estado === 'en_atencion');
     const finalizados = asignaciones.filter(a => a.estado === 'finalizado');
 
     document.getElementById('cnt-pendiente').textContent = pendientes.length;
-    document.getElementById('cnt-llamando').textContent  = llamando.length;
-    document.getElementById('cnt-atencion').textContent  = enAtencion.length;
+    document.getElementById('cnt-llamando').textContent = llamando.length;
+    document.getElementById('cnt-atencion').textContent = enAtencion.length;
     document.getElementById('cnt-finalizado').textContent = finalizados.length;
 
     if (!asignaciones.length) {
-        lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px">🕐</div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
+        lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px"></div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
         return;
     }
 
@@ -280,22 +301,22 @@ function renderAsignaciones() {
 
     // En atención primero
     if (enAtencion.length) {
-        secciones.push(`<div class="seccion-titulo">🔵 En atención (${enAtencion.length})</div>`);
+        secciones.push(`<div class="seccion-titulo">En atención (${enAtencion.length})</div>`);
         secciones.push(enAtencion.map(a => renderCard(a)).join(''));
     }
     // Llamando
     if (llamando.length) {
-        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">🟡 Llamando (${llamando.length})</div>`);
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">Llamando (${llamando.length})</div>`);
         secciones.push(llamando.map(a => renderCard(a)).join(''));
     }
     // Pendientes
     if (pendientes.length) {
-        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">⏳ Pendientes (${pendientes.length})</div>`);
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">Pendientes (${pendientes.length})</div>`);
         secciones.push(pendientes.map(a => renderCard(a)).join(''));
     }
     // Finalizados (solo aparecen al consultar el historial de días anteriores)
     if (finalizados.length) {
-        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">✅ Finalizados (${finalizados.length})</div>`);
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">Finalizados (${finalizados.length})</div>`);
         secciones.push(finalizados.map(a => renderCard(a)).join(''));
     }
 
@@ -314,9 +335,9 @@ function renderCard(a) {
 
     let estadoBadge = '';
     if (a.estado === 'pendiente') estadoBadge = '<span class="estado-badge eb-pendiente">Pendiente</span>';
-    if (a.estado === 'llamando')  estadoBadge = '<span class="estado-badge eb-llamando">Llamando...</span>';
+    if (a.estado === 'llamando') estadoBadge = '<span class="estado-badge eb-llamando">Llamando...</span>';
     if (a.estado === 'en_atencion') estadoBadge = '<span class="estado-badge eb-en_atencion">En atención</span>';
-    if (a.estado === 'finalizado')  estadoBadge = '<span class="estado-badge eb-finalizado">Finalizado</span>';
+    if (a.estado === 'finalizado') estadoBadge = '<span class="estado-badge eb-finalizado">Finalizado</span>';
     const tiempoFinalizado = a.hora_finalizado
         ? new Date(a.hora_finalizado).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
         : null;
@@ -329,23 +350,23 @@ function renderCard(a) {
 
     let bloqueoBanner = '';
     if (a.bloqueado && a.estado === 'pendiente') {
-        bloqueoBanner = `<div class="bloqueo-aviso">⏳ En atención con ${a.bloqueado_por || 'otro profesional'}</div>`;
+        bloqueoBanner = `<div class="bloqueo-aviso">En atención con ${a.bloqueado_por || 'otro profesional'}</div>`;
     }
 
     let botones = '';
     if (a.bloqueado && a.estado === 'pendiente') {
-        botones = `<button class="btn-accion btn-llamar" disabled title="El paciente está siendo atendido">📢 Llamar</button>`;
+        botones = `<button class="btn-accion btn-llamar" disabled title="El paciente está siendo atendido">Llamar</button>`;
     } else if (a.estado === 'pendiente' && tieneActivo) {
-        botones = `<button class="btn-accion btn-llamar" disabled title="Termine la atención actual antes de llamar a otro paciente">📢 Llamar</button>`;
+        botones = `<button class="btn-accion btn-llamar" disabled title="Termine la atención actual antes de llamar a otro paciente">Llamar</button>`;
     } else if (a.estado === 'pendiente') {
-        botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">📢 Llamar</button>`;
+        botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">Llamar</button>`;
     } else if (a.estado === 'llamando') {
         botones = `
-            <button class="btn-accion btn-sonar" onclick="sonarLlamado('${a.id}')" title="Volver a sonar el timbre en el display">🔔 Sonar</button>
-            <button class="btn-accion btn-atencion" onclick="accion('en-atencion','${a.id}')">✓ En Atención</button>
-            <button class="btn-accion btn-cancelar-ll" onclick="cancelarLlamado('${a.id}')">✗ Cancelar</button>`;
+            <button class="btn-accion btn-sonar" onclick="sonarLlamado('${a.id}')" title="Volver a sonar el timbre en el display">Sonar</button>
+            <button class="btn-accion btn-atencion" onclick="accion('en-atencion','${a.id}')">En Atención</button>
+            <button class="btn-accion btn-cancelar-ll" onclick="cancelarLlamado('${a.id}')">Cancelar</button>`;
     } else if (a.estado === 'en_atencion') {
-        botones = `<button class="btn-accion btn-finalizar" onclick="accion('finalizar','${a.id}')">✓ Finalizar</button>`;
+        botones = `<button class="btn-accion btn-finalizar" onclick="accion('finalizar','${a.id}')">Finalizar</button>`;
     }
 
     return `<div class="pac-card estado-${a.estado}${a.bloqueado && a.estado === 'pendiente' ? ' bloqueado' : ''}">

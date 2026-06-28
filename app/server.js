@@ -26,7 +26,11 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json());
+// Límite ampliado para admitir el logo del Display enviado como data URL (base64).
+app.use(express.json({ limit: '5mb' }));
+
+// La ruta raíz "/" muestra el menú principal de selección de módulos
+// (servido por express.static desde public/index.html).
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Hacer io disponible en las rutas via req.app.get('io')
@@ -38,6 +42,7 @@ app.use('/api/admisiones',  require('./routes/api.admisiones'));
 app.use('/api/profesional', require('./routes/api.profesional'));
 app.use('/api/extension',   require('./routes/api.extension'));
 app.use('/api/admin',       require('./routes/api.admin'));
+app.use('/api/config',      require('./routes/api.config'));
 
 // Ruta de salud
 app.get('/health', (req, res) => {
