@@ -1,14 +1,50 @@
 const { Router } = require('express');
 const { query } = require('../database/db');
+const { crearToken, validarAdminToken } = require('../middleware/adminAuth');
+const { fechaHoyBogota } = require('../utils/fecha');
 
 const router = Router();
+
+// Claves de configuración cuyo valor nunca debe exponerse al cliente.
+const CLAVES_SENSIBLES = new Set(['clave_admin']);
+
+// ── Autenticación ─────────────────────────────────────────────
+// Barrera de acceso al módulo Admin. La clave se almacena en la tabla de
+// configuración (clave 'clave_admin', valor por defecto '2026') y puede
+// cambiarse desde la pestaña Configuración. En un login válido se entrega un
+// token de sesión que el cliente debe enviar en el header Authorization.
+// (Ruta pública: se define ANTES del middleware de protección.)
+router.post('/login', async (req, res) => {
+    const { clave } = req.body || {};
+    if (!clave) return res.status(400).json({ error: 'clave_requerida' });
+    try {
+        const { rows } = await query(
+            `SELECT valor FROM configuracion WHERE clave = 'clave_admin'`
+        );
+        const claveValida = rows[0]?.valor || '2026';
+        if (String(clave) === String(claveValida)) {
+            return res.json({ ok: true, token: crearToken() });
+        }
+        return res.status(401).json({ error: 'clave_incorrecta' });
+    } catch (err) {
+        console.error('[admin/login]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// A partir de aquí, todos los endpoints exigen un token de sesión válido.
+router.use(validarAdminToken);
 
 // ── Configuración ─────────────────────────────────────────────
 
 router.get('/config', async (req, res) => {
     try {
         const { rows } = await query(`SELECT clave, valor, descripcion FROM configuracion ORDER BY clave`);
-        return res.json(rows);
+        // Enmascara claves sensibles: nunca se envía el valor real al cliente.
+        const segura = rows.map(r =>
+            CLAVES_SENSIBLES.has(r.clave) ? { ...r, valor: '', sensible: true } : r
+        );
+        return res.json(segura);
     } catch (err) {
         return res.status(500).json({ error: 'db_error' });
     }
@@ -17,6 +53,10 @@ router.get('/config', async (req, res) => {
 router.post('/config', async (req, res) => {
     const { clave, valor } = req.body;
     if (!clave || valor === undefined) return res.status(400).json({ error: 'clave y valor requeridos' });
+    // No se permite vaciar una clave sensible (p.ej. dejar el admin sin contraseña).
+    if (CLAVES_SENSIBLES.has(clave) && String(valor).trim() === '') {
+        return res.status(400).json({ error: 'valor_vacio_no_permitido' });
+    }
     try {
         await query(
             `INSERT INTO configuracion (clave, valor, updated_at) VALUES ($1, $2, NOW())
@@ -46,7 +86,7 @@ router.get('/terminales', async (req, res) => {
 // ── Dashboard — resumen del día ───────────────────────────────
 
 router.get('/resumen-dia', async (req, res) => {
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+    const fecha = req.query.fecha || fechaHoyBogota();
     try {
         const { rows: cola } = await query(
             `SELECT
@@ -80,7 +120,7 @@ router.get('/resumen-dia', async (req, res) => {
 // ── Lista de pacientes del día ────────────────────────────────
 
 router.get('/pacientes', async (req, res) => {
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+    const fecha = req.query.fecha || fechaHoyBogota();
     try {
         const { rows } = await query(
             `SELECT
@@ -123,7 +163,7 @@ router.get('/pacientes', async (req, res) => {
 // ── Reporte detallado T1→T5 ───────────────────────────────────
 
 router.get('/reporte-detallado', async (req, res) => {
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+    const fecha = req.query.fecha || fechaHoyBogota();
     try {
         const { rows: timeline } = await query(
             `SELECT
@@ -300,7 +340,7 @@ router.get('/estado-display', async (req, res) => {
 // ── Log de eventos ────────────────────────────────────────────
 
 router.get('/eventos-log', async (req, res) => {
-    const fecha = req.query.fecha || new Date().toISOString().split('T')[0];
+    const fecha = req.query.fecha || fechaHoyBogota();
     const limite = Math.min(parseInt(req.query.limite) || 100, 500);
     try {
         const { rows } = await query(
