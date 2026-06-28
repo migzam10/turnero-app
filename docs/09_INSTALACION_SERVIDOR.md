@@ -249,17 +249,9 @@ La implementación usa `node-cron` + PostgreSQL:
 
 ```javascript
 // Corre cada día a las 2:00 AM
-// Elimina pacientes y asignaciones de más de N días (configurable)
+// El historial de pacientes y asignaciones se conserva de forma indefinida
 // Eventos de log: retiene siempre 30 días
 ```
-
-Para cambiar la retención de datos, actualizar la configuración en PostgreSQL:
-
-```sql
-UPDATE configuracion SET valor = '14' WHERE clave = 'dias_retener_datos';
-```
-
-O usar el endpoint del admin: `POST /api/admin/config` con `{ "clave": "dias_retener_datos", "valor": "14" }`.
 
 ---
 

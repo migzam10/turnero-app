@@ -970,7 +970,6 @@ async function cargarConfig() {
         modulos_admisiones:      { label: 'Módulos de admisiones', desc: 'JSON array de nombres. Ej: ["Módulo 1","Módulo 2","Módulo 3"]' },
         sonido_habilitado:       { label: 'Sonido en TVs', desc: '"true" o "false"' },
         intervalo_extension_seg: { label: 'Intervalo extensión (segundos)', desc: 'Cada cuántos segundos la extensión sincroniza con Biofile' },
-        dias_retener_datos:      { label: 'Días de retención de datos', desc: 'Datos operativos se eliminan después de N días. Eventos log siempre 30 días.' },
         version_db:              { label: 'Versión del esquema DB', desc: 'Solo lectura' }
     };
 
