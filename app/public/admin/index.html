@@ -107,7 +107,7 @@ tr:hover td { background: #f8fafc; }
 .login-error { color: var(--rojo); font-size: .82rem; font-weight: 600; min-height: 1em; }
 </style>
 </head>
-<body>
+<body data-modulo="Admin">
 
 <!-- Barrera de autenticación -->
 <div class="overlay-login" id="overlay-login">
@@ -123,10 +123,11 @@ tr:hover td { background: #f8fafc; }
 
 <div class="app-admin" id="app-admin" style="display:none">
 <div class="header">
-    <h1>Admin — Turnero CertiMedic</h1>
+    <h1 data-titulo-base="Admin">Admin — Turnero CertiMedic</h1>
     <div class="header-right">
         <span id="reloj-admin">--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
+        <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
 
@@ -195,6 +196,40 @@ tr:hover td { background: #f8fafc; }
     <div class="panel" id="panel-configuracion">
         <div class="seccion">
             <div class="seccion-header">
+                <span class="seccion-titulo">Personalización de pantallas</span>
+            </div>
+            <div style="padding:16px; display:flex; flex-direction:column; gap:20px;">
+                <!-- Sufijo de título -->
+                <div>
+                    <div class="config-key">Texto de los títulos</div>
+                    <div class="config-desc" style="margin-bottom:8px">Acompaña el nombre de cada módulo. Ej.: "Recepción — &lt;su texto&gt;".</div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <input class="config-val" id="cfg-titulo-sufijo" style="max-width:340px" placeholder="Turnero CertiMedic">
+                        <button class="btn-guardar-config" id="btn-guardar-sufijo" onclick="guardarTituloSufijo()">Guardar</button>
+                    </div>
+                </div>
+                <!-- Logo del Display -->
+                <div>
+                    <div class="config-key">Logo del Display</div>
+                    <div class="config-desc" style="margin-bottom:8px">Reemplaza el ícono central del Display. Si no hay logo, se muestra el ícono por defecto.</div>
+                    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+                        <div id="logo-preview" style="width:96px; height:96px; border:1.5px solid var(--borde); border-radius:8px; display:flex; align-items:center; justify-content:center; background:#f8fafc; overflow:hidden;">
+                            <span style="font-size:.72rem; color:var(--gris)">Sin logo</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <input type="file" id="logo-file" accept="image/*" onchange="previsualizarLogo(event)">
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-guardar-config" id="btn-guardar-logo" onclick="guardarLogo()" disabled>Guardar logo</button>
+                                <button class="btn-actualizar" style="background:var(--rojo)" onclick="quitarLogo()">Quitar logo</button>
+                            </div>
+                            <div class="config-desc" id="logo-msg"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header">
                 <span class="seccion-titulo">Parámetros del sistema</span>
                 <button class="btn-actualizar" onclick="cargarConfig()">Recargar</button>
             </div>
@@ -221,6 +256,7 @@ tr:hover td { background: #f8fafc; }
 </div><!-- /app-admin -->
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/branding.js"></script>
 <script>
 // ── Autenticación ───────────────────────────────────────────────
 let adminToken = null;
@@ -251,6 +287,12 @@ function cerrarSesionAdmin() {
     document.getElementById('overlay-login').style.display = '';
     document.getElementById('login-clave').value = '';
     document.getElementById('login-clave').focus();
+}
+
+// Botón "Salir": limpia la sesión de admin y vuelve al menú principal.
+function salir() {
+    adminToken = null;
+    window.location.href = '/';
 }
 
 async function autenticar(e) {
@@ -293,6 +335,7 @@ socket.on('connect', () => {
     socket.emit('join', { tipo: 'admin', terminalId: 'admin-' + Date.now() });
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 
 // ── Tabs ────────────────────────────────────────────────────────
 function mostrarTab(nombre) {
@@ -304,7 +347,7 @@ function mostrarTab(nombre) {
     if (panel) panel.classList.add('activo');
 
     if (nombre === 'dashboard') cargarDashboard();
-    if (nombre === 'configuracion') cargarConfig();
+    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); }
     if (nombre === 'terminales') cargarTerminales();
 }
 
@@ -572,7 +615,9 @@ async function cargarConfig() {
     try {
         const resp = await fetchAdmin('/api/admin/config');
         const configs = await resp.json();
-        configs.forEach(c => {
+        // titulo_sufijo y display_logo tienen controles dedicados en "Personalización".
+        const ocultas = new Set(['titulo_sufijo', 'display_logo']);
+        configs.filter(c => !ocultas.has(c.clave)).forEach(c => {
             const item = document.createElement('div');
             item.className = 'config-item';
 
@@ -630,6 +675,111 @@ async function guardarConfig(clave, btn) {
             setTimeout(() => { el.textContent = txt; el.style.background = ''; }, 2000);
         }
     } catch {}
+}
+
+// ── Personalización (títulos y logo del Display) ──────────────
+let logoPendiente = null;
+
+async function cargarPersonalizacion() {
+    try {
+        const resp = await fetch('/api/config/publica');
+        if (!resp.ok) return;
+        const cfg = await resp.json();
+        document.getElementById('cfg-titulo-sufijo').value = cfg.titulo_sufijo || '';
+        pintarPreviewLogo(cfg.display_logo || '');
+        logoPendiente = null;
+        document.getElementById('btn-guardar-logo').disabled = true;
+        document.getElementById('logo-file').value = '';
+        document.getElementById('logo-msg').textContent = '';
+    } catch {}
+}
+
+function pintarPreviewLogo(dataUrl) {
+    const box = document.getElementById('logo-preview');
+    box.textContent = '';
+    if (dataUrl) {
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain;';
+        box.appendChild(img);
+    } else {
+        const span = document.createElement('span');
+        span.style.cssText = 'font-size:.72rem; color:var(--gris)';
+        span.textContent = 'Sin logo';
+        box.appendChild(span);
+    }
+}
+
+async function guardarTituloSufijo() {
+    const valor = document.getElementById('cfg-titulo-sufijo').value.trim();
+    if (!valor) { return; }
+    const btn = document.getElementById('btn-guardar-sufijo');
+    try {
+        const resp = await fetchAdmin('/api/admin/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave: 'titulo_sufijo', valor })
+        });
+        if (resp.ok) {
+            const txt = btn.textContent;
+            btn.textContent = 'Guardado';
+            btn.style.background = '#15803d';
+            setTimeout(() => { btn.textContent = txt; btn.style.background = ''; }, 2000);
+        }
+    } catch {}
+}
+
+function previsualizarLogo(event) {
+    const file = event.target.files && event.target.files[0];
+    const msg = document.getElementById('logo-msg');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { msg.textContent = 'El archivo debe ser una imagen.'; return; }
+    if (file.size > 2 * 1024 * 1024) { msg.textContent = 'La imagen supera 2 MB. Use una más liviana.'; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+        logoPendiente = reader.result;
+        pintarPreviewLogo(logoPendiente);
+        document.getElementById('btn-guardar-logo').disabled = false;
+        msg.textContent = 'Listo para guardar.';
+    };
+    reader.onerror = () => { msg.textContent = 'No se pudo leer el archivo.'; };
+    reader.readAsDataURL(file);
+}
+
+async function guardarLogo() {
+    if (!logoPendiente) return;
+    const msg = document.getElementById('logo-msg');
+    try {
+        const resp = await fetchAdmin('/api/admin/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave: 'display_logo', valor: logoPendiente })
+        });
+        msg.textContent = resp.ok ? 'Logo guardado.' : 'No se pudo guardar el logo.';
+        if (resp.ok) {
+            logoPendiente = null;
+            document.getElementById('btn-guardar-logo').disabled = true;
+            document.getElementById('logo-file').value = '';
+        }
+    } catch { msg.textContent = 'Error de conexión.'; }
+}
+
+async function quitarLogo() {
+    const msg = document.getElementById('logo-msg');
+    try {
+        const resp = await fetchAdmin('/api/admin/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave: 'display_logo', valor: '' })
+        });
+        if (resp.ok) {
+            logoPendiente = null;
+            document.getElementById('logo-file').value = '';
+            document.getElementById('btn-guardar-logo').disabled = true;
+            pintarPreviewLogo('');
+            msg.textContent = 'Logo eliminado. Se mostrará el ícono por defecto.';
+        }
+    } catch { msg.textContent = 'Error de conexión.'; }
 }
 
 // ── Terminales ────────────────────────────────────────────────

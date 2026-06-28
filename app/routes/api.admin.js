@@ -39,7 +39,12 @@ router.use(validarAdminToken);
 
 router.get('/config', async (req, res) => {
     try {
-        const { rows } = await query(`SELECT clave, valor, descripcion FROM configuracion ORDER BY clave`);
+        // Se excluye display_logo (base64 grande); tiene su propio endpoint público
+        // y su control dedicado en "Personalización".
+        const { rows } = await query(
+            `SELECT clave, valor, descripcion FROM configuracion
+             WHERE clave <> 'display_logo' ORDER BY clave`
+        );
         // Enmascara claves sensibles: nunca se envía el valor real al cliente.
         const segura = rows.map(r =>
             CLAVES_SENSIBLES.has(r.clave) ? { ...r, valor: '', sensible: true } : r
@@ -63,6 +68,9 @@ router.post('/config', async (req, res) => {
              ON CONFLICT (clave) DO UPDATE SET valor = $2, updated_at = NOW()`,
             [clave, valor]
         );
+        // Notifica a todas las pantallas para que recarguen branding/parámetros en vivo.
+        // Se envía solo la clave (sin el valor) para no difundir payloads grandes (logo).
+        req.app.get('io').emit('config:actualizada', { clave });
         return res.json({ ok: true });
     } catch (err) {
         return res.status(500).json({ error: 'db_error' });

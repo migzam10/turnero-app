@@ -25,13 +25,34 @@ router.get('/cola', async (req, res) => {
     }
 });
 
+// GET /api/recepcion/:id — registro completo de un paciente (para precargar el
+// formulario de edición). Se define después de /cola para no colisionar.
+router.get('/:id', async (req, res) => {
+    try {
+        const { rows, rowCount } = await query(
+            `SELECT id, numero_identificacion, tipo_identificacion,
+                    primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+                    ciudad_expedicion, sexo, prioridad, estado_admision,
+                    TO_CHAR(fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento
+             FROM pacientes_cola
+             WHERE id = $1 AND fecha = CURRENT_DATE`,
+            [req.params.id]
+        );
+        if (rowCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[recepcion/get-id]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // POST /api/recepcion/registrar
 router.post('/registrar', validarTerminalId, async (req, res) => {
     const {
         numero_identificacion, tipo_identificacion = 'CC',
         primer_nombre, segundo_nombre,
         primer_apellido, segundo_apellido,
-        ciudad_expedicion, fecha_nacimiento,
+        ciudad_expedicion, fecha_nacimiento, sexo,
         prioridad = 'normal'
     } = req.body;
 
@@ -40,6 +61,9 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
             error: 'Campos requeridos: numero_identificacion, primer_nombre, primer_apellido'
         });
     }
+
+    // Normalizar sexo: solo se acepta 'M' o 'F'; cualquier otro valor se guarda como NULL.
+    const sexoNorm = ['M', 'F'].includes((sexo || '').toUpperCase()) ? sexo.toUpperCase() : null;
 
     try {
         // Validar UUID del terminal antes de insertar
@@ -52,21 +76,21 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
             `INSERT INTO pacientes_cola
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
                  primer_apellido, segundo_apellido, ciudad_expedicion, fecha_nacimiento,
-                 prioridad, terminal_recepcion_id)
+                 sexo, prioridad, terminal_recepcion_id)
              VALUES ($1,$2,$3,$4,$5,$6,$7,
                      CASE
                          WHEN $8 = '' THEN NULL
                          WHEN $8 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $8::DATE
                          ELSE TO_DATE($8, 'DD/MM/YYYY')
                      END,
-                     $9,$10)
+                     $9,$10,$11)
              ON CONFLICT (fecha, numero_identificacion) DO NOTHING
              RETURNING *`,
             [numero_identificacion, tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
-             fechaParam, prioridad, terminalUUID]
+             fechaParam, sexoNorm, prioridad, terminalUUID]
         );
 
         if (rows.length === 0) {
@@ -85,6 +109,70 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         return res.status(201).json(rows[0]);
     } catch (err) {
         console.error('[recepcion/registrar]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// PUT /api/recepcion/:id — actualiza los datos de un paciente ya registrado.
+// Solo se permite mientras está 'esperando' (aún no llamado/admisionado), para
+// evitar editar a alguien que ya está siendo procesado en Admisiones.
+router.put('/:id', validarTerminalId, async (req, res) => {
+    const {
+        numero_identificacion, tipo_identificacion = 'CC',
+        primer_nombre, segundo_nombre,
+        primer_apellido, segundo_apellido,
+        ciudad_expedicion, fecha_nacimiento, sexo
+    } = req.body;
+
+    if (!numero_identificacion || !primer_nombre || !primer_apellido) {
+        return res.status(400).json({
+            error: 'Campos requeridos: numero_identificacion, primer_nombre, primer_apellido'
+        });
+    }
+
+    const sexoNorm = ['M', 'F'].includes((sexo || '').toUpperCase()) ? sexo.toUpperCase() : null;
+    const fechaParam = fecha_nacimiento || '';
+
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE pacientes_cola SET
+                numero_identificacion = $1,
+                tipo_identificacion   = $2,
+                primer_nombre         = $3,
+                segundo_nombre        = $4,
+                primer_apellido       = $5,
+                segundo_apellido      = $6,
+                ciudad_expedicion     = $7,
+                fecha_nacimiento      = CASE
+                    WHEN $8 = '' THEN NULL
+                    WHEN $8 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $8::DATE
+                    ELSE TO_DATE($8, 'DD/MM/YYYY')
+                END,
+                sexo                  = $9,
+                updated_at            = NOW()
+             WHERE id = $10 AND fecha = CURRENT_DATE AND estado_admision = 'esperando'
+             RETURNING *`,
+            [numero_identificacion, tipo_identificacion,
+             primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
+             primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
+             ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
+             fechaParam, sexoNorm, req.params.id]
+        );
+
+        if (rowCount === 0) {
+            return res.status(409).json({ error: 'no_editable' });
+        }
+
+        const io = req.app.get('io');
+        io.to('recepcion').emit('paciente:actualizado', rows[0]);
+        io.to('admisiones').emit('paciente:actualizado', rows[0]);
+
+        return res.json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ error: 'cedula_duplicada' });
+        }
+        console.error('[recepcion/actualizar]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });

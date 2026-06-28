@@ -98,6 +98,11 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-pri-change { font-size: 0.7rem; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--borde); background: white; cursor: pointer; color: var(--gris); display: none; }
 .cola-item:hover .btn-pri-change { display: inline; }
 
+/* Botón editar paciente (pequeño y discreto, visible al pasar el cursor) */
+.btn-edit-pac { font-size: 0.7rem; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--borde); background: white; cursor: pointer; color: var(--gris); display: none; }
+.cola-item:hover .btn-edit-pac { display: inline; }
+.btn-edit-pac:hover { border-color: var(--azul2); color: var(--azul2); }
+
 /* Input scanner oculto */
 #scan-input { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; }
 
@@ -112,42 +117,37 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .cola-vacia { text-align: center; padding: 40px 16px; color: var(--gris); font-size: 0.9rem; }
 </style>
 </head>
-<body>
+<body data-modulo="Recepción">
 <input type="text" id="scan-input" autocomplete="off">
 
 <div class="header">
-    <h1>📋 Recepción — Turnero CertiMedic</h1>
+    <h1 data-titulo-base="Recepción">Recepción — Turnero CertiMedic</h1>
     <div class="header-info">
         <span id="reloj">--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
+        <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
 
 <div class="layout">
     <!-- Panel izquierdo -->
     <div class="panel-scan">
-        <!-- Estado: esperando escaneo -->
-        <div class="scan-waiting" id="vista-espera">
-            <div class="scan-icon">📷</div>
-            <div class="scan-label">Listo para escanear</div>
-            <div class="scan-sublabel">Escanee la cédula del paciente o ingrese los datos manualmente</div>
-            <button class="btn-manual" onclick="mostrarFormularioManual()">✏️ Ingresar manualmente</button>
-        </div>
-
-        <!-- Preview de datos del escaneo / formulario manual -->
-        <div class="scan-preview" id="vista-preview">
+        <!-- Formulario de registro de paciente (vista por defecto) -->
+        <div class="scan-preview visible" id="vista-preview">
             <div class="preview-header">
-                <span class="preview-titulo">Datos del paciente</span>
+                <span class="preview-titulo" id="preview-titulo">Datos del paciente</span>
                 <span class="badge-formato" id="badge-formato">MANUAL</span>
             </div>
 
             <div class="preview-grid">
+                <!-- 1. Número de cédula -->
                 <div class="campo-grupo">
                     <label class="campo-label">Número de cédula *</label>
                     <input class="campo-input" id="f-cedula" placeholder="12345678901" maxlength="20">
                 </div>
+                <!-- 2. Tipo de documento -->
                 <div class="campo-grupo">
-                    <label class="campo-label">Tipo</label>
+                    <label class="campo-label">Tipo de documento</label>
                     <select class="campo-input" id="f-tipo">
                         <option value="CC">Cédula CC</option>
                         <option value="TI">Tarjeta Identidad TI</option>
@@ -156,46 +156,47 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
                         <option value="RC">Registro Civil RC</option>
                     </select>
                 </div>
+                <!-- 3. Fecha de nacimiento -->
+                <div class="campo-grupo">
+                    <label class="campo-label">Fecha de nacimiento</label>
+                    <input class="campo-input" id="f-fecha" placeholder="DD/MM/AAAA" maxlength="10" inputmode="numeric">
+                </div>
+                <!-- 4. Primer apellido -->
                 <div class="campo-grupo">
                     <label class="campo-label">Primer apellido *</label>
                     <input class="campo-input" id="f-apellido1" placeholder="GARCIA">
                 </div>
+                <!-- 5. Segundo apellido -->
                 <div class="campo-grupo">
                     <label class="campo-label">Segundo apellido</label>
                     <input class="campo-input" id="f-apellido2" placeholder="MARTINEZ">
                 </div>
+                <!-- 6. Primer nombre -->
                 <div class="campo-grupo">
                     <label class="campo-label">Primer nombre *</label>
                     <input class="campo-input" id="f-nombre1" placeholder="JUAN">
                 </div>
+                <!-- 7. Segundo nombre -->
                 <div class="campo-grupo">
                     <label class="campo-label">Segundo nombre</label>
                     <input class="campo-input" id="f-nombre2" placeholder="PABLO">
                 </div>
+                <!-- 8. Sexo -->
                 <div class="campo-grupo">
-                    <label class="campo-label">Fecha nacimiento</label>
-                    <input class="campo-input" id="f-fecha" placeholder="DD/MM/YYYY" maxlength="10">
-                </div>
-                <div class="campo-grupo">
-                    <label class="campo-label">Ciudad expedición</label>
-                    <input class="campo-input" id="f-ciudad" placeholder="BARRANQUILLA">
-                </div>
-            </div>
-
-            <div>
-                <div class="campo-label" style="margin-bottom:8px">Prioridad</div>
-                <div class="prioridad-row">
-                    <button class="prioridad-btn activo" data-val="normal" onclick="setPrioridad('normal')">Normal</button>
-                    <button class="prioridad-btn" data-val="media" onclick="setPrioridad('media')">⚡ Media</button>
-                    <button class="prioridad-btn" data-val="alta" onclick="setPrioridad('alta')">🔴 Alta</button>
+                    <label class="campo-label">Sexo</label>
+                    <select class="campo-input" id="f-sexo">
+                        <option value="">—</option>
+                        <option value="M">M</option>
+                        <option value="F">F</option>
+                    </select>
                 </div>
             </div>
 
             <div id="msg-resultado" class="msg-resultado"></div>
 
             <div class="btns-accion">
-                <button class="btn-registrar" id="btn-registrar" onclick="registrarPaciente()">✓ Registrar paciente</button>
-                <button class="btn-cancelar" onclick="cancelarYEsperar()">Cancelar</button>
+                <button class="btn-registrar" id="btn-registrar" onclick="registrarPaciente()">Registrar paciente</button>
+                <button class="btn-cancelar" onclick="resetearFormulario()">Cancelar</button>
             </div>
         </div>
     </div>
@@ -219,8 +220,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <div style="font-size:.9rem;color:#64748b;margin-bottom:8px" id="modal-nombre-pac"></div>
         <div class="prioridad-row">
             <button class="prioridad-btn" data-val="normal" onclick="cambiarPrioridad('normal')">Normal</button>
-            <button class="prioridad-btn" data-val="media" onclick="cambiarPrioridad('media')">⚡ Media</button>
-            <button class="prioridad-btn" data-val="alta" onclick="cambiarPrioridad('alta')">🔴 Alta</button>
+            <button class="prioridad-btn" data-val="media" onclick="cambiarPrioridad('media')">Media</button>
+            <button class="prioridad-btn" data-val="alta" onclick="cambiarPrioridad('alta')">Alta</button>
         </div>
         <div class="modal-btns">
             <button class="btn-cancelar" style="width:100%" onclick="cerrarModal()">Cerrar</button>
@@ -229,6 +230,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/branding.js"></script>
 <script>
 // ── Configuración terminal ─────────────────────────────────────
 const TERMINAL_ID = (() => {
@@ -262,22 +264,32 @@ socket.on('connect', () => {
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
 socket.on('paciente:nuevo', () => cargarCola());
 socket.on('paciente:prioridad', () => cargarCola());
+socket.on('paciente:actualizado', () => cargarCola());
+socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 socket.on('admision:completada', () => cargarCola());
 
 // ── Estado de la app ────────────────────────────────────────────
-let prioridadActual = 'normal';
-let modoActual = 'espera'; // 'espera' | 'preview'
+// La prioridad ya no se selecciona en el formulario: todo registro entra como 'normal'
+// y puede recategorizarse luego desde la cola del día.
+const prioridadActual = 'normal';
 let pacienteModalId = null;
+// Id del paciente en edición. null = el formulario registra (INSERT); con valor = actualiza (UPDATE).
+let editandoId = null;
 
 // ── Escáner ─────────────────────────────────────────────────────
 const scanInput = document.getElementById('scan-input');
 let scanTimer = null;
 
-// Mantener el foco en el input oculto cuando estamos en modo espera
+// ¿El foco está dentro de un campo del formulario? (entonces NO robamos el foco)
+function focoEnFormulario() {
+    const a = document.activeElement;
+    return a && a.closest && a.closest('.scan-preview');
+}
+
+// Mantener el foco en el input oculto mientras el usuario no esté escribiendo en un campo,
+// para que el lector de cédula siempre capture el escaneo.
 function mantenerFocoScanner() {
-    if (modoActual === 'espera') {
-        scanInput.focus();
-    }
+    if (!focoEnFormulario()) scanInput.focus();
 }
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.panel-scan .scan-preview') && !e.target.closest('.modal')) {
@@ -287,9 +299,7 @@ document.addEventListener('click', (e) => {
 mantenerFocoScanner();
 
 scanInput.addEventListener('blur', () => {
-    if (modoActual === 'espera') {
-        setTimeout(mantenerFocoScanner, 20);
-    }
+    setTimeout(mantenerFocoScanner, 20);
 });
 
 scanInput.addEventListener('input', () => {
@@ -419,10 +429,10 @@ function parsearPDF417(raw) {
 function mapearJSON(d) {
     return {
         numero_identificacion: d.cedula || d.numero_identificacion || d.numId || d.id || '',
-        primer_apellido:  d.primer_apellido || d.apellido1 || d.primerApellido || '',
+        primer_apellido: d.primer_apellido || d.apellido1 || d.primerApellido || '',
         segundo_apellido: d.segundo_apellido || d.apellido2 || d.segundoApellido || '',
-        primer_nombre:    d.primer_nombre || d.nombre1 || d.primerNombre || d.nombre || '',
-        segundo_nombre:   d.segundo_nombre || d.nombre2 || d.segundoNombre || '',
+        primer_nombre: d.primer_nombre || d.nombre1 || d.primerNombre || d.nombre || '',
+        segundo_nombre: d.segundo_nombre || d.nombre2 || d.segundoNombre || '',
         fecha_nacimiento: d.fecha_nacimiento || d.fechaNacimiento || d.fechaNac || '',
         ciudad_expedicion: d.ciudad_expedicion || d.ciudadExpedicion || d.ciudad || '',
     };
@@ -444,45 +454,68 @@ function procesarEscaneo(raw) {
 }
 
 function mostrarPreview(datos, formato) {
-    modoActual = 'preview';
-    document.getElementById('vista-espera').style.display = 'none';
-    document.getElementById('vista-preview').classList.add('visible');
     document.getElementById('badge-formato').textContent = formato || 'MANUAL';
 
     // Llenar campos
     setVal('f-cedula', datos.numero_identificacion || '');
+    setVal('f-fecha', formatearFechaInput(datos.fecha_nacimiento || ''));
     setVal('f-apellido1', datos.primer_apellido || '');
     setVal('f-apellido2', datos.segundo_apellido || '');
     setVal('f-nombre1', datos.primer_nombre || '');
     setVal('f-nombre2', datos.segundo_nombre || '');
-    setVal('f-fecha', datos.fecha_nacimiento || '');
-    setVal('f-ciudad', datos.ciudad_expedicion || '');
+    setSexo(datos.sexo || '');
 
-    setPrioridad('normal');
     limpiarMensaje();
 
-    // Foco en cédula si está vacío
+    // Foco en cédula si está vacío (entrada manual); si vino del escaneo, dejamos
+    // el foco en el lector para capturar el siguiente escaneo.
     if (!datos.numero_identificacion) {
         setTimeout(() => document.getElementById('f-cedula').focus(), 50);
     }
-}
-
-function mostrarFormularioManual() {
-    mostrarPreview({}, 'MANUAL');
-    setTimeout(() => document.getElementById('f-cedula').focus(), 50);
 }
 
 function setVal(id, val) {
     document.getElementById(id).value = val;
 }
 
-// ── Prioridad ───────────────────────────────────────────────────
-function setPrioridad(val) {
-    prioridadActual = val;
-    document.querySelectorAll('.prioridad-btn').forEach(b => {
-        b.classList.toggle('activo', b.dataset.val === val);
-    });
+// ── Sexo (M/F) ──────────────────────────────────────────────────
+function setSexo(val) {
+    const s = (val || '').toString().trim().toUpperCase();
+    document.getElementById('f-sexo').value = (s === 'M' || s === 'F') ? s : '';
 }
+
+// El escáner puede enviar el carácter 'm' o 'f' directamente al <select>.
+document.getElementById('f-sexo').addEventListener('keydown', (e) => {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'm' || k === 'f') {
+        e.preventDefault();
+        document.getElementById('f-sexo').value = k.toUpperCase();
+    }
+});
+
+// ── Fecha de nacimiento ─────────────────────────────────────────
+// Convierte el formato del escáner (aaaammdd, 8 dígitos sin separadores) a dd/mm/aaaa.
+// Si ya viene con separadores (entrada manual) se respeta tal cual.
+function formatearFechaInput(valor) {
+    const v = (valor || '').toString().trim();
+    if (/^\d{8}$/.test(v)) {
+        const aa = v.slice(0, 4), mm = v.slice(4, 6), dd = v.slice(6, 8);
+        const anio = +aa, mes = +mm, dia = +dd;
+        const anioValido = anio >= 1900 && anio <= new Date().getFullYear();
+        if (anioValido && mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+            return `${dd}/${mm}/${aa}`;
+        }
+    }
+    return v;
+}
+
+// Interceptar la entrada del escáner en el campo de fecha.
+document.getElementById('f-fecha').addEventListener('input', () => {
+    const el = document.getElementById('f-fecha');
+    if (/^\d{8}$/.test(el.value)) {
+        el.value = formatearFechaInput(el.value);
+    }
+});
 
 // ── Registrar paciente ──────────────────────────────────────────
 async function registrarPaciente() {
@@ -494,52 +527,109 @@ async function registrarPaciente() {
     if (!apellido1) { mostrarMsg('Ingrese el primer apellido', 'error'); return; }
     if (!nombre1) { mostrarMsg('Ingrese el primer nombre', 'error'); return; }
 
+    const enEdicion = editandoId !== null;
     const btn = document.getElementById('btn-registrar');
     btn.disabled = true;
-    btn.textContent = 'Registrando...';
+    btn.textContent = enEdicion ? 'Guardando...' : 'Registrando...';
 
     const body = {
         numero_identificacion: cedula,
         tipo_identificacion: document.getElementById('f-tipo').value,
+        fecha_nacimiento: document.getElementById('f-fecha').value.trim(),
         primer_apellido: apellido1,
         segundo_apellido: document.getElementById('f-apellido2').value.trim().toUpperCase(),
         primer_nombre: nombre1,
         segundo_nombre: document.getElementById('f-nombre2').value.trim().toUpperCase(),
-        fecha_nacimiento: document.getElementById('f-fecha').value.trim(),
-        ciudad_expedicion: document.getElementById('f-ciudad').value.trim().toUpperCase(),
+        sexo: document.getElementById('f-sexo').value,
         prioridad: prioridadActual
     };
 
     try {
-        const resp = await fetch('/api/recepcion/registrar', {
-            method: 'POST',
+        const url = enEdicion ? `/api/recepcion/${editandoId}` : '/api/recepcion/registrar';
+        const resp = await fetch(url, {
+            method: enEdicion ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
             body: JSON.stringify(body)
         });
         const data = await resp.json();
 
-        if (resp.status === 201) {
-            mostrarMsg(`✓ Paciente registrado correctamente — ${nombre1} ${apellido1}`, 'ok');
-            setTimeout(cancelarYEsperar, 2200);
-        } else if (resp.status === 409) {
-            mostrarMsg(`⚠ El paciente con cédula ${cedula} ya fue registrado hoy`, 'warn');
+        if (enEdicion) {
+            if (resp.ok) {
+                mostrarMsg(`Paciente actualizado — ${nombre1} ${apellido1}`, 'ok');
+                cargarCola();
+                setTimeout(resetearFormulario, 1600);
+            } else if (resp.status === 409 && data.error === 'cedula_duplicada') {
+                mostrarMsg(`Ya existe otro paciente con cédula ${cedula} hoy`, 'warn');
+            } else if (resp.status === 409) {
+                mostrarMsg('El paciente ya no es editable (fue llamado o admisionado)', 'warn');
+            } else {
+                mostrarMsg(`Error: ${data.error || 'Error desconocido'}`, 'error');
+            }
         } else {
-            mostrarMsg(`Error: ${data.error || 'Error desconocido'}`, 'error');
+            if (resp.status === 201) {
+                mostrarMsg(`Paciente registrado correctamente — ${nombre1} ${apellido1}`, 'ok');
+                setTimeout(resetearFormulario, 2200);
+            } else if (resp.status === 409) {
+                mostrarMsg(`El paciente con cédula ${cedula} ya fue registrado hoy`, 'warn');
+            } else {
+                mostrarMsg(`Error: ${data.error || 'Error desconocido'}`, 'error');
+            }
         }
     } catch {
         mostrarMsg('Error de conexión con el servidor', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '✓ Registrar paciente';
+        btn.textContent = editandoId ? 'Guardar cambios' : 'Registrar paciente';
     }
 }
 
-function cancelarYEsperar() {
-    modoActual = 'espera';
-    document.getElementById('vista-espera').style.display = '';
-    document.getElementById('vista-preview').classList.remove('visible');
+// Carga un paciente existente en el formulario para editarlo (modo UPDATE).
+async function editarPaciente(id) {
+    try {
+        const resp = await fetch(`/api/recepcion/${id}`);
+        if (!resp.ok) { mostrarMsg('No se pudo cargar el paciente para editar', 'error'); return; }
+        const p = await resp.json();
+        setVal('f-cedula', p.numero_identificacion || '');
+        document.getElementById('f-tipo').value = p.tipo_identificacion || 'CC';
+        setVal('f-fecha', p.fecha_nacimiento || '');
+        setVal('f-apellido1', p.primer_apellido || '');
+        setVal('f-apellido2', p.segundo_apellido || '');
+        setVal('f-nombre1', p.primer_nombre || '');
+        setVal('f-nombre2', p.segundo_nombre || '');
+        document.getElementById('f-sexo').value = ['M', 'F'].includes(p.sexo) ? p.sexo : '';
+
+        editandoId = id;
+        document.getElementById('preview-titulo').textContent = 'Editando paciente';
+        document.getElementById('badge-formato').textContent = 'EDICIÓN';
+        document.getElementById('btn-registrar').textContent = 'Guardar cambios';
+        limpiarMensaje();
+        document.getElementById('f-cedula').focus();
+    } catch {
+        mostrarMsg('Error de conexión con el servidor', 'error');
+    }
+}
+
+// El botón "Cancelar" ya no cierra el formulario: vacía todos sus campos.
+function resetearFormulario() {
+    ['f-cedula', 'f-fecha', 'f-apellido1', 'f-apellido2', 'f-nombre1', 'f-nombre2']
+        .forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('f-tipo').value = 'CC';
+    document.getElementById('f-sexo').value = '';
+    document.getElementById('badge-formato').textContent = 'MANUAL';
+    // Salir del modo edición y restaurar el formulario a "registro".
+    editandoId = null;
+    document.getElementById('preview-titulo').textContent = 'Datos del paciente';
+    document.getElementById('btn-registrar').textContent = 'Registrar paciente';
     limpiarMensaje();
-    setTimeout(mantenerFocoScanner, 50);
+    // Devolver el foco al lector para el siguiente escaneo (forzado: el botón
+    // "Cancelar"/"Registrar" queda dentro del formulario tras el clic).
+    setTimeout(() => scanInput.focus(), 50);
+}
+
+// Botón "Salir": limpia el formulario y vuelve al menú principal.
+function salir() {
+    resetearFormulario();
+    window.location.href = '/';
 }
 
 function mostrarMsg(txt, tipo) {
@@ -580,10 +670,17 @@ function renderCola(lista) {
 
         const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
 
+        // El botón "Editar" solo aparece mientras el paciente sigue 'esperando'
+        // (una vez llamado/admisionado, el backend rechaza la edición).
+        const btnEditar = p.estado_admision === 'esperando'
+            ? `<button class="btn-edit-pac" onclick="event.stopPropagation(); editarPaciente('${p.id}')">Editar</button>`
+            : '';
+
         return `<div class="cola-item" onclick="abrirModalPrioridad('${p.id}', '${p.nombre_completo}', '${p.prioridad}')">
             <span class="badge-pri pri-${p.prioridad}">${p.prioridad.toUpperCase()}</span>
             <span class="cola-nombre">${p.nombre_completo}</span>
             <span class="cola-estado estado-${p.estado_admision}">${estadoLabel} ${hora}</span>
+            ${btnEditar}
         </div>`;
     }).join('');
 }

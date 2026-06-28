@@ -8,46 +8,45 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
 .logo { font-size: 2rem; font-weight: 900; color: #1a3a6e; margin-bottom: 6px; }
-.sub  { color: #64748b; font-size: .95rem; margin-bottom: 40px; }
+.sub { color: #64748b; font-size: .95rem; margin-bottom: 40px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; width: 100%; max-width: 900px; }
 .card { background: white; border-radius: 14px; padding: 28px 20px; text-align: center; text-decoration: none; color: inherit; border: 2px solid #e2e8f0; transition: all .2s; cursor: pointer; }
 .card:hover { border-color: #2563eb; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,.12); }
 .card-icon { font-size: 2.5rem; margin-bottom: 12px; }
 .card-name { font-weight: 800; font-size: 1.05rem; color: #1a3a6e; }
-.card-desc  { font-size: .8rem; color: #64748b; margin-top: 5px; line-height: 1.4; }
+.card-desc { font-size: .8rem; color: #64748b; margin-top: 5px; line-height: 1.4; }
 .footer { margin-top: 40px; font-size: .75rem; color: #94a3b8; }
 </style>
 </head>
 <body>
-<div class="logo">🏥 Turnero CertiMedic</div>
-<div class="sub">Sistema de gestión de turnos — seleccione su módulo</div>
+<div class="logo" data-titulo-base="">Turnero CertiMedic</div>
 <div class="grid">
     <a class="card" href="/recepcion">
-        <div class="card-icon">📋</div>
+        <div class="card-icon"></div>
         <div class="card-name">Recepción</div>
         <div class="card-desc">Escaneo y registro de pacientes al llegar</div>
     </a>
     <a class="card" href="/admisiones">
-        <div class="card-icon">🏥</div>
+        <div class="card-icon"></div>
         <div class="card-name">Admisiones</div>
         <div class="card-desc">Llamado y registro en Biofile</div>
     </a>
     <a class="card" href="/profesional">
-        <div class="card-icon">👨‍⚕️</div>
+        <div class="card-icon"></div>
         <div class="card-name">Profesional</div>
         <div class="card-desc">Lista de pacientes asignados para hoy</div>
     </a>
     <a class="card" href="/display">
-        <div class="card-icon">📺</div>
+        <div class="card-icon"></div>
         <div class="card-name">Pantalla TV</div>
         <div class="card-desc">Display público de llamados en tiempo real</div>
     </a>
     <a class="card" href="/admin">
-        <div class="card-icon">⚙</div>
+        <div class="card-icon"></div>
         <div class="card-name">Administración</div>
         <div class="card-desc">Dashboard, reportes y configuración</div>
     </a>
 </div>
-<div class="footer">Turnero CertiMedic v1.0 — Red local</div>
+<script src="/branding.js"></script>
 </body>
 </html>

@@ -49,6 +49,11 @@ function registrarEventosSocket(io) {
             io.to('display').emit('display:sonar', data);
         });
 
+        // Admisiones solicita reenviar la alerta de un paciente ya llamado
+        socket.on('admision:sonar', (data) => {
+            io.to('display').emit('admision:sonar', data);
+        });
+
         socket.on('disconnect', () => {
             console.log(`[WS] Desconectado: ${socket.id} (${socket.data.tipo || 'unknown'})`);
         });

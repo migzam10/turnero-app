@@ -86,14 +86,18 @@ router.post('/admisionar/:id', validarTerminalId, async (req, res) => {
 // POST /api/admisiones/devolver/:id
 router.post('/devolver/:id', validarTerminalId, async (req, res) => {
     try {
+        // Se conserva el módulo anterior (modulo_anterior) porque el UPDATE lo pone
+        // en NULL; el Display lo necesita para quitar al paciente de la pantalla.
         const { rows, rowCount } = await query(
-            `UPDATE pacientes_cola
+            `UPDATE pacientes_cola pc
              SET estado_admision = 'esperando',
                  hora_llamado_admision = NULL,
                  modulo_admision = NULL,
                  updated_at = NOW()
-             WHERE id = $1 AND fecha = CURRENT_DATE AND estado_admision = 'llamando_admision'
-             RETURNING *`,
+             FROM (SELECT id, modulo_admision FROM pacientes_cola WHERE id = $1) old
+             WHERE pc.id = old.id AND pc.fecha = CURRENT_DATE
+               AND pc.estado_admision = 'llamando_admision'
+             RETURNING pc.*, old.modulo_admision AS modulo_anterior`,
             [req.params.id]
         );
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
@@ -142,12 +146,18 @@ router.get('/datos-pegado/:id', validarTerminalId, async (req, res) => {
 });
 
 // GET /api/admisiones/config-modulos
+// La cantidad de módulos es dinámica: se lee desde la configuración del módulo Admin
+// (clave 'cantidad_modulos_admisiones') y se generan los nombres "Módulo 1..N".
 router.get('/config-modulos', async (req, res) => {
     try {
         const { rows } = await query(
-            `SELECT valor FROM configuracion WHERE clave = 'modulos_admisiones'`
+            `SELECT valor FROM configuracion WHERE clave = 'cantidad_modulos_admisiones'`
         );
-        return res.json(JSON.parse(rows[0]?.valor || '[]'));
+        let cantidad = parseInt(rows[0]?.valor, 10);
+        if (!Number.isFinite(cantidad) || cantidad < 1) cantidad = 3; // valor por defecto seguro
+        cantidad = Math.min(cantidad, 50);                            // tope defensivo
+        const modulos = Array.from({ length: cantidad }, (_, i) => `Módulo ${i + 1}`);
+        return res.json(modulos);
     } catch (err) {
         console.error('[admisiones/config-modulos]', err);
         return res.status(500).json({ error: 'db_error' });

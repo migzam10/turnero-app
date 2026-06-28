@@ -6,17 +6,17 @@
 <title>Pantalla TV — Turnero CertiMedic</title>
 <style>
 :root {
-    --fondo:   #eef2f7;
-    --card:    #ffffff;
-    --card2:   #f4f7fc;
-    --azul:    #1e40af;
+    --fondo: #eef2f7;
+    --card: #ffffff;
+    --card2: #f4f7fc;
+    --azul: #1e40af;
     --azul-lt: #dbeafe;
-    --verde:   #16a34a;
+    --verde: #16a34a;
     --naranja: #d97706;
-    --borde:   #dde3ed;
-    --texto:   #0f172a;
-    --texto2:  #475569;
-    --header:  #1e3a6e;
+    --borde: #dde3ed;
+    --texto: #0f172a;
+    --texto2: #475569;
+    --header: #1e3a6e;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
@@ -72,9 +72,11 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .sig-item { background: rgba(30,64,175,.07); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 12px; font-size: .72rem; color: var(--texto2); }
 
 /* Sin llamados */
-.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; opacity: .25; }
+.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .sin-llamado-icono { font-size: 5rem; }
-.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--texto); }
+/* La campana por defecto y el texto van atenuados; un logo cargado se ve nítido. */
+.sin-llamado-icono [data-logo-default] { opacity: .25; }
+.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--texto); opacity: .25; }
 
 /* Barra de progreso del llamado */
 .progreso-bar { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--azul); transition: width linear; border-radius: 0 3px 0 0; }
@@ -83,10 +85,11 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 <body>
 
 <div class="header">
-    <div class="logo">🏥 TURNERO CERTIMEDIC</div>
+    <div class="logo" data-titulo-base="">TURNERO CERTIMEDIC</div>
     <div class="header-right">
         <span id="reloj-display">--:--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
+        <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
 
@@ -100,7 +103,14 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     <!-- Centro -->
     <div class="col-centro" id="col-centro">
         <div class="sin-llamado" id="sin-llamado">
-            <div class="sin-llamado-icono">🔔</div>
+            <div class="sin-llamado-icono" data-display-logo>
+                <span data-logo-default>
+                    <svg width="90" height="90" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22zm7.2-5.6v-5.4c0-3.43-2.04-6.3-5.1-6.97V3a1.9 1.9 0 0 0-3.8 0v1.03C7.24 4.7 5.2 7.57 5.2 11v5.4L3.2 18.4v.4h17.6v-.4z"/>
+                    </svg>
+                </span>
+                <img data-logo-img alt="Logo" style="display:none; max-width:220px; max-height:220px; object-fit:contain;">
+            </div>
             <div class="sin-llamado-txt">En espera</div>
         </div>
         <div class="llamado-container" id="llamado-actual" style="display:none"></div>
@@ -116,6 +126,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/branding.js"></script>
 <script>
 // ── Reloj ───────────────────────────────────────────────────────
 function actualizarReloj() {
@@ -124,11 +135,16 @@ function actualizarReloj() {
 setInterval(actualizarReloj, 1000);
 actualizarReloj();
 
+// Botón "Salir": vuelve al menú principal.
+function salir() {
+    window.location.href = '/';
+}
+
 // ── Estado del display ──────────────────────────────────────────
 const estado = {
-    consultorios: {},  // { profesional: { nombre_paciente, consultorio, estado } }
-    modulos: {},       // { 'Módulo 1': { nombre_paciente, estado } }
-    colaCalls: [],     // Queue de anuncios { tipo, nombre_paciente, destino, subtitulo }
+    consultorios: {}, // { profesional: { nombre_paciente, consultorio, estado } }
+    modulos: {}, // { 'Módulo 1': { nombre_paciente, estado } }
+    colaCalls: [], // Queue de anuncios { tipo, nombre_paciente, destino, subtitulo }
     llamadoActivo: null,
     progresoTimer: null,
     progresoStart: null,
@@ -137,9 +153,40 @@ const estado = {
 const DURACION_LLAMADO = 8000; // ms
 
 // ── Web Audio beeps ─────────────────────────────────────────────
+// Se reutiliza un único AudioContext. Crear uno nuevo por cada beep agota el
+// límite de contextos del navegador (deja de sonar tras unas pocas veces) y los
+// deja en estado "suspended" por la política de autoplay. Antes de cada sonido
+// el contexto se reanuda (resume) controlando la promesa, equivalente a
+// reiniciar el objeto de audio antes de reproducirlo.
+let audioCtx = null;
+
+function getAudioCtx() {
+    if (!audioCtx) {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch {
+            return null;
+        }
+    }
+    return audioCtx;
+}
+
+// La política de autoplay exige un gesto del usuario para habilitar el sonido.
+// Cualquier interacción reanuda el contexto si quedó suspendido.
+function desbloquearAudio() {
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+}
+document.addEventListener('click', desbloquearAudio);
+document.addEventListener('keydown', desbloquearAudio);
+
 function beep(frecuencia = 880, duracion = 150) {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = getAudioCtx();
+        if (!ctx) return;
+        // Reiniciar/reanudar el contexto antes de sonar y controlar la promesa
+        // para no lanzar excepción por las políticas de autoplay del navegador.
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
@@ -256,7 +303,7 @@ function renderColaSiguiente() {
     const el = document.getElementById('cola-siguiente');
     if (!estado.colaCalls.length) { el.innerHTML = ''; return; }
     el.innerHTML = estado.colaCalls.map(c =>
-        `<div class="sig-item">⏳ ${c.nombre_paciente}</div>`
+        `<div class="sig-item">${c.nombre_paciente}</div>`
     ).join('');
 }
 
@@ -272,6 +319,20 @@ function cancelarLlamadoProfesional(prof) {
     }
 }
 
+// Cancela inmediatamente la visualización de un llamado de admisiones (timer + cola).
+// Se identifica por id de paciente o, en su defecto, por módulo.
+function cancelarLlamadoAdmision(id, modulo) {
+    const coincide = c => c.tipo === 'admision' &&
+        ((id != null && c.id === id) || (modulo && c.modulo === modulo));
+    estado.colaCalls = estado.colaCalls.filter(c => !coincide(c));
+    renderColaSiguiente();
+    if (estado.llamadoActivo && coincide(estado.llamadoActivo)) {
+        clearTimeout(estado.progresoTimer);
+        estado.llamadoActivo = null;
+        procesarSiguiente();
+    }
+}
+
 // ── Socket.io ───────────────────────────────────────────────────
 const socket = io();
 
@@ -281,6 +342,8 @@ socket.on('connect', () => {
     cargarEstadoInicial();
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+// Recarga branding (título/logo) cuando Admin cambia la configuración.
+socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 
 // Profesional solicita volver a sonar
 socket.on('display:sonar', (data) => {
@@ -309,7 +372,23 @@ socket.on('admision:llamando', (p) => {
     if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
     renderModulos();
 
-    encolarLlamado({ tipo: 'admision', nombre_paciente: nombre, destino: modulo });
+    encolarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
+});
+
+// Admisiones solicita volver a sonar la alerta de un paciente ya llamado.
+// Replica de inmediato la alerta (audio + centro), igual que "Sonar" de Profesionales:
+// el paciente salta al frente y suena el timbre sin pasar por la cola de anuncios.
+socket.on('admision:sonar', (p) => {
+    const nombre = p.nombre_completo || [p.primer_nombre, p.primer_apellido].filter(Boolean).join(' ');
+    const modulo = p.modulo_admision || 'Admisiones';
+
+    if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
+    renderModulos();
+
+    // Descarta cualquier instancia previa de este paciente en la cola y muestra al frente.
+    estado.colaCalls = estado.colaCalls.filter(c => !(c.tipo === 'admision' && c.id === p.id));
+    clearTimeout(estado.progresoTimer);
+    mostrarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
 });
 
 // Admisiones confirma ingreso a Biofile
@@ -321,11 +400,13 @@ socket.on('admision:completada', (p) => {
     renderModulos();
 });
 
-// Admisiones devuelve paciente a espera
+// Admisiones devuelve/cancela paciente a espera — desaparece al instante del display
 socket.on('admision:devuelto', (p) => {
-    const modulo = p.modulo_admision;
+    // modulo_admision ya viene en NULL tras el UPDATE; se usa modulo_anterior.
+    const modulo = p.modulo_anterior || p.modulo_admision;
     if (modulo && estado.modulos[modulo]) delete estado.modulos[modulo];
     renderModulos();
+    cancelarLlamadoAdmision(p.id, modulo);
 });
 
 // Profesional llama un paciente
