@@ -456,28 +456,48 @@ socket.on('asignacion:finalizado', (a) => {
     renderConsultorios();
 });
 
-// ── Estado inicial al conectar ──────────────────────────────────
+// ── Estado inicial (recuperación tras F5 / corte de luz) ────────
+// Antes de depender de los WebSockets, el Display consulta los pacientes que están
+// "Llamando" ahora mismo y reconstruye tanto los paneles laterales (módulos y
+// consultorios) como el anuncio central, recuperando el estado exacto.
 async function cargarEstadoInicial() {
     try {
-        const resp = await fetch('/api/admin/estado-display');
+        const resp = await fetch('/api/display/activos');
         if (!resp.ok) return;
-        const { consultorios, modulos } = await resp.json();
+        const { activos } = await resp.json();
 
-        // Reconstruir estado de consultorios
-        for (const c of consultorios) {
-            if (c.nombre_profesional) {
-                estado.consultorios[c.nombre_profesional] = {
-                    profesional: c.nombre_profesional,
-                    nombre_paciente: c.nombre_paciente,
-                    consultorio: c.consultorio_profesional,
-                    estado: c.estado
+        // El servidor es la fuente autoritativa: se parte de cero para que el estado
+        // quede exacto (sin entradas obsoletas si esto se ejecuta en una reconexión).
+        estado.consultorios = {};
+        estado.modulos = {};
+
+        for (const a of activos) {
+            if (a.tipo === 'profesional' && a.nombre_profesional) {
+                estado.consultorios[a.nombre_profesional] = {
+                    profesional: a.nombre_profesional,
+                    nombre_paciente: a.nombre_paciente,
+                    consultorio: a.consultorio,
+                    estado: 'llamando'
                 };
-            }
-        }
-        // Reconstruir estado de módulos
-        for (const m of modulos) {
-            if (m.modulo_admision) {
-                estado.modulos[m.modulo_admision] = { nombre_paciente: m.nombre_paciente, estado: m.estado_admision };
+                if (!yaAnunciado(a)) {
+                    encolarLlamado({
+                        tipo: 'profesional',
+                        nombre_paciente: a.nombre_paciente,
+                        nombre_profesional: a.nombre_profesional,
+                        destino: a.destino
+                    });
+                }
+            } else if (a.tipo === 'admision' && a.modulo) {
+                estado.modulos[a.modulo] = { nombre_paciente: a.nombre_paciente, estado: 'llamando' };
+                if (!yaAnunciado(a)) {
+                    encolarLlamado({
+                        tipo: 'admision',
+                        id: a.id,
+                        modulo: a.modulo,
+                        nombre_paciente: a.nombre_paciente,
+                        destino: a.destino
+                    });
+                }
             }
         }
 
@@ -485,6 +505,20 @@ async function cargarEstadoInicial() {
         renderModulos();
     } catch {}
 }
+
+// ¿El anuncio (activo o en cola) ya representa a este paciente? Evita duplicados
+// en el centro cuando cargarEstadoInicial corre en una reconexión de socket.
+function yaAnunciado(a) {
+    const todos = estado.colaCalls.concat(estado.llamadoActivo ? [estado.llamadoActivo] : []);
+    if (a.tipo === 'profesional') {
+        return todos.some(c => c.tipo === 'profesional' && c.nombre_profesional === a.nombre_profesional);
+    }
+    return todos.some(c => c.tipo === 'admision' && c.id === a.id);
+}
+
+// Recuperación inmediata al cargar la página (F5 / corte de luz), sin esperar a que
+// el socket conecte. La reconexión del socket vuelve a sincronizar de forma idempotente.
+cargarEstadoInicial();
 </script>
 </body>
 </html>
