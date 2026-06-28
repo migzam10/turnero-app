@@ -480,9 +480,12 @@ function renderTablaPacientes(lista) {
 
 function exportarCSVPacientes() {
     if (!dataPacientes.length) return;
-    const filas = [['Cedula','Nombre','Llegada','Prioridad','Estado','Modulo','Admision']];
+    const filas = [['Cedula','Nombre','Llegada','Prioridad','Estado','Modulo','Admision','Asignaciones']];
     dataPacientes.forEach(p => {
-        filas.push([p.numero_identificacion, p.nombre_completo, horaFmt(p.hora_llegada), p.prioridad, p.estado_admision, p.modulo_admision||'', horaFmt(p.hora_admision)]);
+        const asignaciones = (p.asignaciones && p.asignaciones.length)
+            ? p.asignaciones.map(a => `${a.profesional} (${a.estado})`).join(' | ')
+            : '';
+        filas.push([p.numero_identificacion, p.nombre_completo, horaFmt(p.hora_llegada), p.prioridad, p.estado_admision, p.modulo_admision||'', horaFmt(p.hora_admision), asignaciones]);
     });
     descargarCSV(filas, `pacientes_${document.getElementById('fecha-pacientes').value}.csv`);
 }

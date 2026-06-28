@@ -150,8 +150,6 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
                                  'Habilitar sonido en las pantallas de TV'),
     ('intervalo_extension_seg', '60',
                                  'Cada cuántos segundos la extensión sincroniza con Biofile'),
-    ('dias_retener_datos',      '7',
-                                 'Días que se conservan datos operativos'),
     ('version_db',              '1',
                                  'Versión del esquema')
 ON CONFLICT (clave) DO NOTHING;
@@ -314,30 +312,20 @@ netstat -ano | findstr 5432
 
 ## Limpieza automática de datos históricos
 
+El historial operativo (pacientes y asignaciones) se conserva de forma indefinida.
+Solo los eventos de log se purgan automáticamente, reteniendo los últimos 30 días.
+
 ```javascript
 const cron = require('node-cron');
 const { query } = require('./database/db');
 
 // Cada día a las 2:00 AM
 cron.schedule('0 2 * * *', async () => {
-    const { rows } = await query(
-        "SELECT valor FROM configuracion WHERE clave = 'dias_retener_datos'"
-    );
-    const dias = parseInt(rows[0]?.valor || '7');
-
-    await query(
-        'DELETE FROM pacientes_cola WHERE fecha < CURRENT_DATE - $1::INTEGER',
-        [dias]
-    );
-    await query(
-        'DELETE FROM asignaciones_profesionales WHERE fecha < CURRENT_DATE - $1::INTEGER',
-        [dias]
-    );
     // Eventos log: retener 30 días
     await query(
         "DELETE FROM eventos_log WHERE timestamp < NOW() - INTERVAL '30 days'"
     );
-    console.log(`[Cron] Limpieza completada. Eliminados datos de más de ${dias} días.`);
+    console.log('[Cron] Limpieza de eventos_log completada.');
 });
 ```
 
