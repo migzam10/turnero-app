@@ -619,7 +619,8 @@ async function cargarConfig() {
         const resp = await fetchAdmin('/api/admin/config');
         const configs = await resp.json();
         // titulo_sufijo y display_logo tienen controles dedicados en "Personalización".
-        const ocultas = new Set(['titulo_sufijo', 'display_logo']);
+        // dias_retener_datos y version_db son parámetros internos que no se editan aquí.
+        const ocultas = new Set(['titulo_sufijo', 'display_logo', 'dias_retener_datos', 'version_db']);
         configs.filter(c => !ocultas.has(c.clave)).forEach(c => {
             const item = document.createElement('div');
             item.className = 'config-item';
