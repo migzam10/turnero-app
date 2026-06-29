@@ -1,13 +1,37 @@
 const { Router } = require('express');
-const { pool } = require('../database/db');
+const { pool, query } = require('../database/db');
 const { validarExtensionSecret } = require('../middleware/validar');
 
 const router = Router();
 
+// GET /api/extension/pendientes — sin auth para que el popup la consuma directo
+router.get('/pendientes', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT id, numero_identificacion,
+                    primer_nombre || ' ' || COALESCE(segundo_nombre || ' ','') ||
+                    primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_completo,
+                    primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+                    sexo,
+                    TO_CHAR(fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento_fmt,
+                    hora_llegada
+             FROM pacientes_cola
+             WHERE fecha = CURRENT_DATE
+               AND estado_admision IN ('esperando','llamando_admision')
+             ORDER BY
+                 CASE prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+                 hora_llegada`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error('[extension/pendientes]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 router.use(validarExtensionSecret);
 
 // Valida que la fecha sea un día calendario real en formato YYYY-MM-DD.
-// Rechaza formatos inválidos y desbordes (p.ej. 2026-02-30).
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
 function fechaValida(f) {
     if (typeof f !== 'string' || !FECHA_RE.test(f)) return false;
@@ -15,13 +39,7 @@ function fechaValida(f) {
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
 }
 
-// Biofile envía el nombre completo como un único string, pero pacientes_cola
-// exige primer_nombre y primer_apellido (NOT NULL). Divide de forma robusta:
-// primera palabra -> primer_nombre, resto -> primer_apellido.
-// Casos borde:
-//   - string vacío/nulo: primer_nombre = 'N/D', primer_apellido = '' (vacío seguro).
-//   - una sola palabra: va a primer_nombre, primer_apellido = '' (vacío seguro).
-//   - espacios redundantes: se normalizan antes de dividir.
+// Divide nombre completo en primer_nombre / primer_apellido de forma robusta.
 function dividirNombre(nombre) {
     const limpio = String(nombre || '').trim().replace(/\s+/g, ' ');
     if (!limpio) return { primerNombre: 'N/D', primerApellido: '' };
@@ -44,16 +62,12 @@ router.post('/sync', async (req, res) => {
             resultados.errores++;
             continue;
         }
-        // Fecha del paciente derivada de Biofile; si falta o es inválida, cae a CURRENT_DATE.
         const fechaParam = fechaValida(fecha) ? fecha : null;
 
-        // Cada paciente se procesa en su propia transacción: la auto-creación en
-        // pacientes_cola y el UPSERT de la asignación deben quedar o ambos o ninguno.
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
-            // 1. Búsqueda: ¿existe ya el paciente en la cola del día?
             const { rows: colaRows } = await client.query(
                 `SELECT id FROM pacientes_cola
                  WHERE fecha = COALESCE($1::date, CURRENT_DATE) AND numero_identificacion = $2`,
@@ -61,11 +75,6 @@ router.post('/sync', async (req, res) => {
             );
             let pacienteColaId = colaRows[0]?.id || null;
 
-            // 2. Fallback: si el paciente no pasó por Recepción, se auto-crea para
-            //    no perder la trazabilidad de T1 (llegada) y T2 (admisión).
-            //    hora_llegada y hora_admision toman el timestamp de Biofile; si éste
-            //    falta, cae a NOW() para respetar el NOT NULL de hora_llegada.
-            //    El ON CONFLICT cubre la carrera con una inserción concurrente.
             if (!pacienteColaId) {
                 const { primerNombre, primerApellido } = dividirNombre(nombrePaciente);
                 const { rows: nuevoCola } = await client.query(
@@ -86,8 +95,6 @@ router.post('/sync', async (req, res) => {
                 resultados.autocreados++;
             }
 
-            // 3. UPSERT de la asignación, ya con paciente_cola_id garantizado.
-            //    Si una asignación previa quedó huérfana (sin cola), se vincula aquí.
             const { rows } = await client.query(
                 `INSERT INTO asignaciones_profesionales
                     (fecha, paciente_cola_id, numero_identificacion, nombre_paciente, nombre_profesional,

@@ -100,6 +100,11 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;
 
+-- Limpieza del parámetro legacy: los módulos pasaron de un array JSON
+-- ('modulos_admisiones') a una cantidad numérica ('cantidad_modulos_admisiones').
+-- Esta sentencia es idempotente y elimina el registro obsoleto en instalaciones previas.
+DELETE FROM configuracion WHERE clave = 'modulos_admisiones';
+
 -- ── Índices ──────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_cola_fecha          ON pacientes_cola(fecha);
 CREATE INDEX IF NOT EXISTS idx_cola_identificacion ON pacientes_cola(numero_identificacion);
