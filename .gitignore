@@ -9,3 +9,9 @@ npm-debug.log*
 extension-deploy/*.pem
 extension-deploy/*.crx
 installer/nssm.exe
+
+# Config local de extensiones (IP y clave secreta) — usar config.example.js como plantilla
+extension/**/config.js
+
+# Capturas de pantalla locales
+docs/Capturas/

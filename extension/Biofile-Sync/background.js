@@ -1,8 +1,4 @@
-const CONFIG = {
-    SERVER_URL: 'http://TU_IP_SERVIDOR:3000',
-    EXTENSION_SECRET: 'cambiar_este_secreto_en_produccion',
-    INTERVALO_MIN: 1
-};
+importScripts('config.js');
 
 chrome.runtime.onInstalled.addListener(() => {
     chrome.alarms.create('sync', { periodInMinutes: CONFIG.INTERVALO_MIN });

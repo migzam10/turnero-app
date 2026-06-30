@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Inyector Turnero a Biofile",
+  "version": "1.0",
+  "description": "Lista pacientes del Turnero y los inyecta en Biofile mediante clic.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://192.168.26.110:3000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://ipscertimedic.biofile.com.co/Factura/OrdenesServiciosSaludOcupacional.aspx*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
