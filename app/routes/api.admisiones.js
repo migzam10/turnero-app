@@ -49,6 +49,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('admisiones').emit('admision:llamando', rows[0]);
         io.to('display').emit('admision:llamando', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -75,6 +76,7 @@ router.post('/admisionar/:id', validarTerminalId, async (req, res) => {
         io.to('admisiones').emit('admision:completada', rows[0]);
         io.to('recepcion').emit('admision:completada', rows[0]);
         io.to('display').emit('admision:completada', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -105,6 +107,7 @@ router.post('/devolver/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('admisiones').emit('admision:devuelto', rows[0]);
         io.to('display').emit('admision:devuelto', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {

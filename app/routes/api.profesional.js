@@ -159,6 +159,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to(`profesional:${profesional}`).emit('asignacion:llamando', payload);
         io.to('display').emit('asignacion:llamando', payload);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(payload);
     } catch (err) {
@@ -194,6 +195,7 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:en_atencion', payload);
         io.to('display').emit('asignacion:en_atencion', payload);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(payload);
     } catch (err) {
@@ -218,6 +220,7 @@ router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:cancelado', rows[0]);
         io.to('display').emit('asignacion:cancelado', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -242,6 +245,7 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:finalizado', rows[0]);
         io.to('display').emit('asignacion:finalizado', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {
