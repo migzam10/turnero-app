@@ -110,11 +110,14 @@ router.get('/resumen-dia', async (req, res) => {
         );
         const { rows: asig } = await query(
             `SELECT
-                COUNT(*) FILTER (WHERE estado = 'pendiente')   AS pendientes,
-                COUNT(*) FILTER (WHERE estado = 'llamando')    AS llamando,
-                COUNT(*) FILTER (WHERE estado = 'en_atencion') AS en_atencion,
-                COUNT(*) FILTER (WHERE estado = 'finalizado')  AS finalizados,
-                COUNT(DISTINCT nombre_profesional)             AS profesionales_activos
+                COUNT(*) FILTER (WHERE estado = 'pendiente' AND activo)   AS pendientes,
+                COUNT(*) FILTER (WHERE estado = 'llamando' AND activo)    AS llamando,
+                COUNT(*) FILTER (WHERE estado = 'en_atencion' AND activo) AS en_atencion,
+                COUNT(*) FILTER (WHERE estado = 'finalizado' AND activo)  AS finalizados,
+                COUNT(DISTINCT nombre_profesional) FILTER (WHERE activo)  AS profesionales_activos,
+                COUNT(*) FILTER (WHERE estado = 'cancelado' AND origen_baja = 'lis')    AS cancelados_lis,
+                COUNT(*) FILTER (WHERE estado = 'cancelado' AND origen_baja = 'manual') AS cancelados_manual,
+                COUNT(*) FILTER (WHERE origen = 'manual' AND activo)      AS particulares
              FROM asignaciones_profesionales WHERE fecha = $1`,
             [fecha]
         );
@@ -180,14 +183,14 @@ router.get('/reporte-detallado', async (req, res) => {
                 pc.prioridad,
                 pc.hora_llegada                                               AS t1_llegada,
                 pc.hora_admision                                              AS t2_sistema,
-                MIN(ap.hora_llamado)                                          AS t3_primer_llamado,
-                MIN(ap.hora_en_atencion)                                      AS t4_primera_atencion,
-                MAX(ap.hora_finalizado)                                       AS t5_ultima_finalizacion,
+                MIN(ap.hora_llamado) FILTER (WHERE ap.activo)                 AS t3_primer_llamado,
+                MIN(ap.hora_en_atencion) FILTER (WHERE ap.activo)             AS t4_primera_atencion,
+                MAX(ap.hora_finalizado) FILTER (WHERE ap.activo)              AS t5_ultima_finalizacion,
                 ROUND(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
                                                                               AS min_espera_admision,
-                ROUND(EXTRACT(EPOCH FROM (MIN(ap.hora_llamado) - pc.hora_llegada))/60)
+                ROUND(EXTRACT(EPOCH FROM (MIN(ap.hora_llamado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
                                                                               AS min_espera_primera_atencion,
-                ROUND(EXTRACT(EPOCH FROM (MAX(ap.hora_finalizado) - pc.hora_llegada))/60)
+                ROUND(EXTRACT(EPOCH FROM (MAX(ap.hora_finalizado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
                                                                               AS min_tiempo_total_clinica,
                 COALESCE(JSON_AGG(
                     JSON_BUILD_OBJECT(
@@ -219,18 +222,21 @@ router.get('/reporte-detallado', async (req, res) => {
         const { rows: porProfesional } = await query(
             `SELECT
                 ap.nombre_profesional, ap.area,
-                COUNT(*)                                                          AS total_asignados,
-                COUNT(*) FILTER (WHERE ap.estado = 'finalizado')                  AS finalizados,
-                COUNT(*) FILTER (WHERE ap.estado IN ('llamando','en_atencion'))   AS en_proceso,
-                COUNT(*) FILTER (WHERE ap.estado = 'pendiente')                   AS pendientes,
+                COUNT(*) FILTER (WHERE ap.activo)                                 AS asignados_activos,
+                COUNT(*) FILTER (WHERE ap.estado = 'finalizado' AND ap.activo)    AS finalizados,
+                COUNT(*) FILTER (WHERE ap.estado IN ('llamando','en_atencion') AND ap.activo) AS en_proceso,
+                COUNT(*) FILTER (WHERE ap.estado = 'pendiente' AND ap.activo)     AS pendientes,
+                COUNT(*) FILTER (WHERE ap.estado = 'cancelado' AND ap.origen_baja = 'lis')    AS cancelados_lis,
+                COUNT(*) FILTER (WHERE ap.estado = 'cancelado' AND ap.origen_baja = 'manual') AS cancelados_manual,
+                COUNT(*) FILTER (WHERE ap.origen = 'manual' AND ap.activo)        AS particulares,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
-                      FILTER (WHERE ap.estado='finalizado' AND ap.hora_en_atencion IS NOT NULL))
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
                                                                                   AS avg_min_atencion,
                 ROUND(MIN(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
-                      FILTER (WHERE ap.estado='finalizado' AND ap.hora_en_atencion IS NOT NULL))
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
                                                                                   AS min_min_atencion,
                 ROUND(MAX(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
-                      FILTER (WHERE ap.estado='finalizado' AND ap.hora_en_atencion IS NOT NULL))
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
                                                                                   AS max_min_atencion,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_llamado - pc.hora_llegada))/60)
                       FILTER (WHERE ap.hora_llamado IS NOT NULL))                 AS avg_min_espera_hasta_llamado
@@ -250,7 +256,10 @@ router.get('/reporte-detallado', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
                       FILTER (WHERE pc.hora_admision IS NOT NULL))                 AS avg_espera_admision,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
-                      FILTER (WHERE ap.estado='finalizado'))                       AS avg_tiempo_atencion_general
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo))         AS avg_tiempo_atencion_general,
+                COUNT(*) FILTER (WHERE ap.origen = 'manual' AND ap.activo)         AS particulares,
+                COUNT(*) FILTER (WHERE ap.estado = 'cancelado' AND ap.origen_baja = 'lis')    AS bajas_lis,
+                COUNT(*) FILTER (WHERE ap.estado = 'cancelado' AND ap.origen_baja = 'manual') AS bajas_manual
              FROM pacientes_cola pc
              LEFT JOIN asignaciones_profesionales ap ON ap.paciente_cola_id = pc.id
              WHERE pc.fecha = $1`,
@@ -265,6 +274,9 @@ router.get('/reporte-detallado', async (req, res) => {
                 ap.nombre_profesional,
                 ap.area,
                 ap.estado,
+                ap.origen,
+                ap.origen_baja,
+                ap.activo,
                 ap.hora_llegada_biofile,
                 ap.hora_llamado,
                 ap.hora_en_atencion,
@@ -296,9 +308,12 @@ router.get('/reporte-rango', async (req, res) => {
         const { rows } = await query(
             `SELECT
                 ap.fecha, ap.nombre_profesional, ap.area,
-                COUNT(*) FILTER (WHERE ap.estado = 'finalizado')                   AS pacientes_atendidos,
+                COUNT(*) FILTER (WHERE ap.estado = 'finalizado' AND ap.activo)     AS pacientes_atendidos,
+                COUNT(*) FILTER (WHERE ap.estado = 'cancelado')                    AS cancelados,
+                COUNT(*) FILTER (WHERE ap.origen = 'manual' AND ap.activo)         AS particulares,
+                COUNT(*) FILTER (WHERE ap.activo)                                  AS asignados_activos,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
-                      FILTER (WHERE ap.estado='finalizado' AND ap.hora_en_atencion IS NOT NULL))
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
                                                                                    AS avg_min_atencion,
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
                       FILTER (WHERE pc.hora_admision IS NOT NULL))                 AS avg_espera_admision
