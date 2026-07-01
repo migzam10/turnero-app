@@ -127,3 +127,40 @@ ALTER TABLE asignaciones_profesionales
 -- Sexo del paciente (v4) — capturado en el formulario de recepción (M/F)
 ALTER TABLE pacientes_cola
     ADD COLUMN IF NOT EXISTS sexo VARCHAR(1) CHECK (sexo IN ('M','F'));
+
+-- ── State Reconciliation (v5) ────────────────────────────────────────────────
+-- Soporta dar de baja asignaciones que ya no existen en Biofile/LIS y gestionar
+-- bajas/reasignaciones manuales con override persistente, sin borrar filas.
+--   activo          → la asignación sigue vigente (false = dada de baja).
+--   manual_override → un humano la gestionó; la sincronización NO debe revivirla.
+--   origen_baja     → quién la dio de baja: 'lis' (reconciliación) | 'manual'.
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS manual_override BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS origen_baja VARCHAR(20);
+
+-- Origen de la asignación: 'biofile' (creada por la extensión/LIS) | 'manual'
+-- (creada dentro de la app para un paciente particular). Las 'manual' nunca están
+-- en el snapshot de Biofile, por lo que la reconciliación debe ignorarlas siempre.
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS origen VARCHAR(20) NOT NULL DEFAULT 'biofile';
+ALTER TABLE asignaciones_profesionales
+    DROP CONSTRAINT IF EXISTS asignaciones_profesionales_origen_check;
+ALTER TABLE asignaciones_profesionales
+    ADD CONSTRAINT asignaciones_profesionales_origen_check
+    CHECK (origen IN ('biofile','manual'));
+
+-- Ampliar el CHECK de `estado` para incluir 'cancelado'. Un CHECK inline no se
+-- puede modificar in-place: se elimina por su nombre autogenerado y se recrea.
+-- DROP IF EXISTS + ADD es idempotente al re-ejecutar el schema completo.
+ALTER TABLE asignaciones_profesionales
+    DROP CONSTRAINT IF EXISTS asignaciones_profesionales_estado_check;
+ALTER TABLE asignaciones_profesionales
+    ADD CONSTRAINT asignaciones_profesionales_estado_check
+    CHECK (estado IN ('pendiente','llamando','en_atencion','finalizado','cancelado'));
+
+-- Índice parcial para el scope de reconciliación (fecha + login, solo activos).
+CREATE INDEX IF NOT EXISTS idx_asig_login_fecha
+    ON asignaciones_profesionales(fecha, login_name_biofile) WHERE activo = true;

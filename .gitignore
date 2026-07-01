@@ -15,3 +15,9 @@ extension/**/config.js
 
 # Capturas de pantalla locales
 docs/Capturas/
+
+# DOM de ejemplo de Biofile (muestras locales para desarrollo, no van al repo ni al server)
+DOM/
+
+# Script personal de despliegue (IP/usuario interno, rutas locales) — no va al repo
+sincronizar.sh

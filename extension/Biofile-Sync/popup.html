@@ -36,7 +36,7 @@
 
     .stats {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 6px;
       text-align: center;
     }
@@ -50,7 +50,22 @@
     .stat-box .lbl { font-size: 10px; color: #666; margin-top: 2px; }
     .num.new { color: #1565c0; }
     .num.upd { color: #43a047; }
+    .num.baja { color: #fb8c00; }
     .num.err { color: #e53935; }
+
+    .snapshot {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .snapshot .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .snapshot .tag.full { background: #e3f2fd; color: #1565c0; }
+    .snapshot .tag.safe { background: #fff3e0; color: #e65100; }
 
     .last-sync { font-size: 11px; color: #666; margin-top: 8px; text-align: center; }
 
@@ -87,9 +102,11 @@
   <section>
     <div class="stats">
       <div class="stat-box"><div class="num new" id="s-new">—</div><div class="lbl">Nuevos</div></div>
-      <div class="stat-box"><div class="num upd" id="s-upd">—</div><div class="lbl">Actualizados</div></div>
+      <div class="stat-box"><div class="num upd" id="s-upd">—</div><div class="lbl">Actualiz.</div></div>
+      <div class="stat-box"><div class="num baja" id="s-baja">—</div><div class="lbl">De baja</div></div>
       <div class="stat-box"><div class="num err" id="s-err">—</div><div class="lbl">Errores</div></div>
     </div>
+    <div class="snapshot" id="snapshot"></div>
     <div class="last-sync" id="last-sync">Sin sincronizaciones aún</div>
     <button id="btn-sync">Sincronizar ahora</button>
     <div class="msg" id="msg"></div>

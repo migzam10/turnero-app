@@ -68,6 +68,18 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-sm.btn-devolver:hover { background: #fef08a; }
 .btn-sm.btn-sonar { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
 .btn-sm.btn-sonar:hover { background: #ddd6fe; }
+.btn-sm.btn-asignar { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
+.btn-sm.btn-asignar:hover { background: #c7d2fe; }
+
+/* Formulario "Asignar a profesional" (autocompletar con texto libre) */
+.asig-grupo { margin-bottom: 12px; position: relative; }
+.asig-label { font-size: .72rem; font-weight: 600; color: var(--gris); text-transform: uppercase; display: block; margin-bottom: 5px; }
+.asig-input { width: 100%; padding: 9px 12px; border: 2px solid var(--borde); border-radius: 8px; font-size: .95rem; font-family: inherit; }
+.asig-input:focus { outline: none; border-color: var(--azul2); }
+.asig-sugerencias { list-style: none; border: 1.5px solid var(--borde); border-radius: 8px; max-height: 160px; overflow-y: auto; background: white; display: none; position: absolute; left: 0; right: 0; z-index: 5; }
+.asig-sugerencias.visible { display: block; }
+.asig-sugerencias li { padding: 8px 12px; cursor: pointer; font-size: .9rem; }
+.asig-sugerencias li:hover { background: #eff6ff; }
 
 .vacia { text-align: center; padding: 50px 16px; color: var(--gris); }
 
@@ -150,6 +162,32 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     </div>
 </div>
 
+<!-- Modal asignar a profesional (paciente particular, no va a Biofile) -->
+<div class="modal-overlay" id="modal-asignar">
+    <div class="modal">
+        <div class="modal-titulo">Asignar a profesional</div>
+        <div class="dato-item full" style="margin-bottom:14px">
+            <div class="dato-label">Paciente</div>
+            <div class="dato-val" id="asig-pac-nombre">—</div>
+        </div>
+        <div class="asig-grupo">
+            <label class="asig-label">Profesional *</label>
+            <input class="asig-input" id="asig-input-prof" placeholder="Escriba el nombre del profesional" autocomplete="off"
+                   oninput="buscarProfesionalAsig(this.value)"
+                   onblur="setTimeout(()=>document.getElementById('asig-sugerencias').classList.remove('visible'),200)">
+            <ul class="asig-sugerencias" id="asig-sugerencias"></ul>
+        </div>
+        <div class="asig-grupo">
+            <label class="asig-label">Área / Servicio (opcional)</label>
+            <input class="asig-input" id="asig-input-area" placeholder="Por defecto: PARTICULAR" maxlength="60">
+        </div>
+        <div class="modal-footer">
+            <button class="btn-sm btn-admisionar" style="flex:1;padding:9px" id="asig-btn-enviar" onclick="enviarAsignacion()">Asignar</button>
+            <button class="btn-outline" onclick="cerrarAsignar()">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="/branding.js"></script>
 <script>
@@ -172,6 +210,11 @@ let colaActual = [];
 // Bloqueo de concurrencia: true mientras hay un "Llamar" en vuelo, para que el
 // operador no pueda lanzar dos llamados simultáneos antes de la respuesta.
 let llamadoEnCurso = false;
+// Asignación manual a profesional: id del paciente en curso, caché del catálogo de
+// nombres y flag anti doble-submit.
+let asigPacienteId = null;
+let catalogoProfesionales = null; // null = aún no cargado
+let asignacionEnCurso = false;
 
 // ── Reloj ───────────────────────────────────────────────────────
 function actualizarReloj() {
@@ -193,6 +236,7 @@ socket.on('paciente:prioridad', () => cargarCola());
 socket.on('admision:llamando', () => cargarCola());
 socket.on('admision:completada',() => cargarCola());
 socket.on('admision:devuelto', () => cargarCola());
+socket.on('asignacion:manual', () => cargarCola());
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 
 // ── Setup módulo ────────────────────────────────────────────────
@@ -269,13 +313,18 @@ function renderCola() {
 
         // Al "Llamar", la fila no se mueve: solo cambian sus controles. Un paciente
         // en proceso muestra "Sonar" (reenvía la alerta) más las acciones de cierre.
+        // "Asignar a profesional": disponible para todo paciente presente hoy en la cola
+        // (esperando o en proceso por este módulo); es un flujo manual para particulares.
+        const btnAsignar = `<button class="btn-sm btn-asignar" onclick="abrirAsignar('${p.id}')">Asignar a profesional</button>`;
         const botones = activo
             ? `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                <button class="btn-sm btn-sonar" onclick="sonarPaciente('${p.id}')" title="Volver a sonar la alerta en el display">Sonar</button>
                <button class="btn-sm btn-admisionar" onclick="admisionarPaciente('${p.id}')">Admisionado</button>
-               <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">Cancelar</button>`
+               <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">Cancelar</button>
+               ${btnAsignar}`
             : `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
-               <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')" ${bloquearLlamar ? 'disabled' : ''}>Llamar</button>`;
+               <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')" ${bloquearLlamar ? 'disabled' : ''}>Llamar</button>
+               ${btnAsignar}`;
 
         return `<div class="pac-card${activo ? ' activo' : ''}">
             <div class="pac-top">
@@ -405,6 +454,110 @@ function cerrarModal() {
 }
 document.getElementById('modal-paciente').addEventListener('click', function(e) {
     if (e.target === this) cerrarModal();
+});
+
+// ── Asignar a profesional (manual / particular) ─────────────────
+// Carga una sola vez el catálogo de profesionales y lo cachea en memoria. Si falla
+// o viene vacío, deja la caché en [] para que el autocompletar no bloquee el texto libre.
+async function cargarCatalogo() {
+    if (catalogoProfesionales !== null) return; // ya cargado (aunque sea [])
+    try {
+        const resp = await fetch('/api/profesional/catalogo');
+        const data = await resp.json();
+        catalogoProfesionales = Array.isArray(data) ? data : [];
+    } catch {
+        catalogoProfesionales = [];
+    }
+}
+
+function abrirAsignar(id) {
+    asigPacienteId = id;
+    const p = colaActual.find(x => x.id === id);
+    document.getElementById('asig-pac-nombre').textContent = p ? p.nombre_completo : '—';
+    // Limpia el formulario para que no arrastre datos de una asignación previa.
+    document.getElementById('asig-input-prof').value = '';
+    document.getElementById('asig-input-area').value = '';
+    document.getElementById('asig-sugerencias').classList.remove('visible');
+    document.getElementById('asig-btn-enviar').disabled = false;
+    document.getElementById('modal-asignar').classList.add('visible');
+    cargarCatalogo(); // dispara la carga/caché del catálogo en segundo plano
+}
+
+// Filtra el catálogo cacheado. El valor final del input puede ser texto libre: estas
+// sugerencias solo ayudan a completar, nunca restringen lo que se puede escribir.
+function buscarProfesionalAsig(texto) {
+    const lista = document.getElementById('asig-sugerencias');
+    const q = texto.trim().toUpperCase();
+    if (q.length < 1 || !catalogoProfesionales || !catalogoProfesionales.length) {
+        lista.classList.remove('visible');
+        return;
+    }
+    const filtrados = catalogoProfesionales.filter(n => n.toUpperCase().includes(q));
+    if (filtrados.length) {
+        lista.innerHTML = filtrados.map(n => `<li onclick="seleccionarProfAsig('${n.replace(/'/g, "\\'")}')">${n}</li>`).join('');
+        lista.classList.add('visible');
+    } else {
+        lista.classList.remove('visible');
+    }
+}
+
+function seleccionarProfAsig(nombre) {
+    document.getElementById('asig-input-prof').value = nombre;
+    document.getElementById('asig-sugerencias').classList.remove('visible');
+}
+
+// Lee el formulario y delega en asignarProfesional con los valores actuales.
+function enviarAsignacion() {
+    asignarProfesional(
+        asigPacienteId,
+        document.getElementById('asig-input-prof').value,
+        document.getElementById('asig-input-area').value
+    );
+}
+
+async function asignarProfesional(pacienteId, nombre, area) {
+    const prof = (nombre || '').trim().toUpperCase();
+    if (!prof) { alert('Ingrese el nombre del profesional.'); return; }
+    if (asignacionEnCurso) return; // evita doble submit
+
+    asignacionEnCurso = true;
+    const btn = document.getElementById('asig-btn-enviar');
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/api/admisiones/asignar-profesional/${pacienteId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ nombre_profesional: prof, area: (area || '').trim() })
+        });
+        if (resp.ok) {
+            cerrarAsignar();
+            cargarCola();
+            return;
+        }
+        if (resp.status === 409) {
+            alert('El paciente ya está asignado a ese profesional.');
+        } else if (resp.status === 404) {
+            alert('Paciente no encontrado o de otra fecha.');
+        } else {
+            alert('No se pudo asignar el profesional. Intente de nuevo.');
+        }
+    } catch {
+        alert('Error de conexión con el servidor.');
+    } finally {
+        asignacionEnCurso = false;
+        // Si el modal sigue abierto (hubo error), rehabilita el botón para reintentar.
+        if (document.getElementById('modal-asignar').classList.contains('visible')) {
+            btn.disabled = false;
+        }
+    }
+}
+
+function cerrarAsignar() {
+    document.getElementById('modal-asignar').classList.remove('visible');
+    asigPacienteId = null;
+}
+document.getElementById('modal-asignar').addEventListener('click', function(e) {
+    if (e.target === this) cerrarAsignar();
 });
 
 // ── Init ────────────────────────────────────────────────────────

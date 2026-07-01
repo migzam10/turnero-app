@@ -20,6 +20,9 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .header-right { display: flex; align-items: center; gap: 14px; font-size: .82rem; }
 .btn-config { background: rgba(255,255,255,.15); border: none; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: .78rem; }
 .btn-config:hover { background: rgba(255,255,255,.25); }
+.btn-config.activo { background: var(--verde); color: white; font-weight: 700; }
+.btn-config.activo:hover { background: #15803d; }
+.badge-gestion { background: var(--verde); color: white; font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-transform: uppercase; letter-spacing: .3px; }
 .dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #888; }
 .dot-ws.ok { background: #4ade80; }
 #reloj { font-weight: 600; }
@@ -88,6 +91,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-finalizar:hover { background: #6d28d9; }
 .btn-cancelar-ll { background: #fef9c3; color: #854d0e; border: 1.5px solid #fde047; }
 .btn-cancelar-ll:hover { background: #fef08a; }
+.btn-reasignar { background: #e0e7ff; color: #3730a3; border: 1.5px solid #a5b4fc; }
+.btn-reasignar:hover { background: #c7d2fe; }
 .btn-sonar { background: #ede9fe; color: #5b21b6; border: 1.5px solid #c4b5fd; }
 .btn-sonar:hover { background: #ddd6fe; }
 .btn-accion:disabled { opacity: .45; cursor: default; }
@@ -127,6 +132,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <input type="date" id="filtro-fecha" class="filtro-fecha" title="Ver asignaciones de otro día">
         <button class="btn-config" id="btn-hoy" onclick="volverAHoy()" style="display:none">Hoy</button>
         <span id="reloj">--:--</span>
+        <span class="badge-gestion" id="badge-gestion" style="display:none">Modo gestión</span>
+        <button class="btn-config" id="btn-ajustes" onclick="toggleModoGestion()">Ajustes</button>
         <button class="btn-config" onclick="abrirSetup()">Cambiar</button>
         <button class="btn-config" onclick="cerrarSesion()">Salir</button>
         <div class="dot-ws" id="dot-ws"></div>
@@ -165,6 +172,9 @@ let consultorioActual = localStorage.getItem('profesional_consultorio') || '';
 let asignaciones = [];
 let timerReloj = null;
 let contadorFinalizado = 0;
+// Modo gestión: habilita Cancelar/Reasignar. NO se persiste: cada recarga arranca en false
+// para que la sesión no quede abierta sin supervisión.
+let modoGestion = false;
 
 function actualizarReloj() {
     document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -186,7 +196,10 @@ socket.on('asignacion:llamando', () => cargarAsignaciones());
 socket.on('asignacion:en_atencion', () => cargarAsignaciones());
 socket.on('asignacion:finalizado', () => cargarAsignaciones());
 socket.on('asignacion:cancelado', () => cargarAsignaciones());
+socket.on('asignacion:reasignado', () => cargarAsignaciones());
+socket.on('asignacion:cancelado_manual', () => cargarAsignaciones());
 socket.on('extension:sync', () => cargarAsignaciones());
+socket.on('UPDATE_PATIENTS', () => cargarAsignaciones());
 
 // ── Setup ───────────────────────────────────────────────────────
 async function buscarProfesional(texto) {
@@ -231,6 +244,9 @@ function confirmarSetup() {
 }
 
 function abrirSetup() {
+    // Al cambiar de profesional el modo gestión debe quedar cerrado.
+    modoGestion = false;
+    aplicarEstadoGestion();
     document.getElementById('input-profesional').value = profesionalActual;
     document.getElementById('input-consultorio').value = consultorioActual;
     document.getElementById('overlay-setup').style.display = 'flex';
@@ -242,6 +258,8 @@ function cerrarSesion() {
     profesionalActual = '';
     consultorioActual = '';
     asignaciones = [];
+    modoGestion = false;
+    aplicarEstadoGestion();
     localStorage.removeItem('profesional_nombre');
     localStorage.removeItem('profesional_consultorio');
 
@@ -353,13 +371,19 @@ function renderCard(a) {
         bloqueoBanner = `<div class="bloqueo-aviso">En atención con ${a.bloqueado_por || 'otro profesional'}</div>`;
     }
 
+    // Gestión manual (cancelar/reasignar) solo se ofrece en 'pendiente' y no bloqueadas,
+    // y únicamente con el Modo gestión activo (desbloqueado con clave de admin).
+    const btnsManual = modoGestion ? `
+            <button class="btn-accion btn-cancelar-ll" onclick="cancelarAsignacion('${a.id}')">Cancelar</button>
+            <button class="btn-accion btn-reasignar" onclick="abrirReasignar('${a.id}')">Reasignar</button>` : '';
+
     let botones = '';
     if (a.bloqueado && a.estado === 'pendiente') {
         botones = `<button class="btn-accion btn-llamar" disabled title="El paciente está siendo atendido">Llamar</button>`;
     } else if (a.estado === 'pendiente' && tieneActivo) {
-        botones = `<button class="btn-accion btn-llamar" disabled title="Termine la atención actual antes de llamar a otro paciente">Llamar</button>`;
+        botones = `<button class="btn-accion btn-llamar" disabled title="Termine la atención actual antes de llamar a otro paciente">Llamar</button>${btnsManual}`;
     } else if (a.estado === 'pendiente') {
-        botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">Llamar</button>`;
+        botones = `<button class="btn-accion btn-llamar" onclick="accion('llamar','${a.id}')">Llamar</button>${btnsManual}`;
     } else if (a.estado === 'llamando') {
         botones = `
             <button class="btn-accion btn-sonar" onclick="sonarLlamado('${a.id}')" title="Volver a sonar el timbre en el display">Sonar</button>
@@ -429,6 +453,146 @@ async function cancelarLlamado(id) {
             body: JSON.stringify({ profesional: profesionalActual })
         });
     } catch {}
+    cargarAsignaciones();
+}
+
+// ── Modo gestión (desbloqueo con clave de admin) ────────────────
+// Refleja el estado de modoGestion en el header: resalta el botón y muestra el badge.
+function aplicarEstadoGestion() {
+    const btn = document.getElementById('btn-ajustes');
+    const badge = document.getElementById('badge-gestion');
+    btn.classList.toggle('activo', modoGestion);
+    badge.style.display = modoGestion ? '' : 'none';
+}
+
+// Evita validaciones simultáneas si el usuario hace doble click en "Ajustes".
+let validandoGestion = false;
+
+async function toggleModoGestion() {
+    // Si ya está activo, basta con desactivarlo (no se pide clave para cerrar).
+    if (modoGestion) {
+        modoGestion = false;
+        aplicarEstadoGestion();
+        renderAsignaciones();
+        return;
+    }
+    if (validandoGestion) return; // doble click: ignora mientras se valida
+    const clave = prompt('Ingrese la clave de administrador para activar el Modo gestión:');
+    if (clave === null || clave.trim() === '') return; // cancelado o vacío: sin cambios
+    validandoGestion = true;
+    try {
+        const resp = await fetch('/api/admin/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave })
+        });
+        if (resp.ok) {
+            modoGestion = true;
+            aplicarEstadoGestion();
+            renderAsignaciones();
+        } else if (resp.status === 401) {
+            alert('Clave incorrecta');
+        } else {
+            alert('No se pudo validar la clave. Intente de nuevo.');
+        }
+    } catch {
+        alert('Error de red al validar la clave. Intente de nuevo.');
+    } finally {
+        validandoGestion = false;
+    }
+}
+
+// ── Gestión manual de asignaciones (cancelar / reasignar) ───────
+// Da de baja MANUAL una asignación pendiente. Distinto de cancelarLlamado:
+// aquí el paciente sale de la vista en vivo (el backend pone activo=false).
+async function cancelarAsignacion(id) {
+    if (!confirm('¿Dar de baja esta asignación? El paciente dejará de aparecer en su lista.')) return;
+    try {
+        const resp = await fetch(`/api/profesional/cancelar-asignacion/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ profesional: profesionalActual })
+        });
+        if (!resp.ok) {
+            const d = await resp.json().catch(() => ({}));
+            if (d.error === 'estado_invalido') {
+                alert('No se puede cancelar: la asignación ya no está pendiente.');
+            } else {
+                alert('No se pudo cancelar la asignación.');
+            }
+        }
+    } catch {
+        alert('Error de red al cancelar. Reintente.');
+    }
+    cargarAsignaciones();
+}
+
+// Abre un selector simple (prompt nativo) con la lista de profesionales del día
+// y, si el destino es válido y distinto del actual, dispara la reasignación.
+async function abrirReasignar(id) {
+    let lista;
+    try {
+        const resp = await fetch('/api/profesional/listado-profesionales');
+        lista = await resp.json();
+    } catch {
+        alert('No se pudo obtener el listado de profesionales. Intente de nuevo.');
+        return;
+    }
+    if (!Array.isArray(lista) || !lista.length) {
+        alert('No hay profesionales disponibles para reasignar.');
+        return;
+    }
+    // Excluir al profesional actual: no tiene sentido reasignarse a sí mismo.
+    const opciones = lista.filter(n => n.toUpperCase() !== profesionalActual.toUpperCase());
+    if (!opciones.length) {
+        alert('No hay otros profesionales a quienes reasignar.');
+        return;
+    }
+    const menu = opciones.map((n, i) => `${i + 1}. ${n}`).join('\n');
+    const sel = prompt(`Reasignar a:\n${menu}\n\nEscriba el número o el nombre del profesional destino:`);
+    if (sel === null) return; // el usuario canceló el prompt
+    const texto = sel.trim();
+    if (!texto) return;
+    // Permitir elegir por número de la lista o escribiendo el nombre.
+    let destino;
+    if (/^\d+$/.test(texto) && +texto >= 1 && +texto <= opciones.length) {
+        destino = opciones[+texto - 1];
+    } else {
+        destino = opciones.find(n => n.toUpperCase() === texto.toUpperCase()) || texto;
+    }
+    if (destino.toUpperCase() === profesionalActual.toUpperCase()) {
+        alert('No puede reasignar al mismo profesional.');
+        return;
+    }
+    reasignar(id, destino);
+}
+
+// Reasigna la asignación a otro profesional contra el backend.
+async function reasignar(id, nuevoProfesional) {
+    // Validación defensiva: nunca reasignar al mismo profesional.
+    if (nuevoProfesional.trim().toUpperCase() === profesionalActual.toUpperCase()) {
+        alert('No puede reasignar al mismo profesional.');
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/profesional/reasignar/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            body: JSON.stringify({ profesional: profesionalActual, nuevo_profesional: nuevoProfesional.toUpperCase() })
+        });
+        if (!resp.ok) {
+            const d = await resp.json().catch(() => ({}));
+            if (d.error === 'destino_duplicado') {
+                alert('Ese paciente ya tiene una asignación con el profesional destino.');
+            } else if (d.error === 'estado_invalido') {
+                alert('No se puede reasignar: la asignación ya no está pendiente.');
+            } else {
+                alert('No se pudo reasignar la asignación.');
+            }
+        }
+    } catch {
+        alert('Error de red al reasignar. Reintente.');
+    }
     cargarAsignaciones();
 }
 

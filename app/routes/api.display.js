@@ -26,7 +26,7 @@ router.get('/activos', async (req, res) => {
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
                  ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
-             WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando'
+             WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando' AND ap.activo = true
              ORDER BY ap.hora_llamado`
         );
 

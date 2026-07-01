@@ -145,6 +145,65 @@ router.get('/datos-pegado/:id', validarTerminalId, async (req, res) => {
     }
 });
 
+// POST /api/admisiones/asignar-profesional/:id
+// Asigna manualmente un paciente de la cola (que NO llegó por Biofile, p.ej. un
+// "particular") a un profesional, creando una fila origen='manual' en
+// asignaciones_profesionales. Marca manual_override para que la reconciliación del
+// LIS jamás la cancele. :id = pacientes_cola.id (NO el id de la asignación).
+router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
+    const { nombre_profesional, area } = req.body;
+    if (!nombre_profesional || !String(nombre_profesional).trim()) {
+        return res.status(400).json({ error: 'nombre_profesional requerido' });
+    }
+    // Normaliza: mayúsculas y colapsa espacios internos.
+    const profesional = String(nombre_profesional).trim().replace(/\s+/g, ' ').toUpperCase();
+
+    try {
+        const { rows: pacRows, rowCount: pacCount } = await query(
+            `SELECT id, fecha, numero_identificacion,
+                    primer_nombre || ' ' || primer_apellido AS nombre_paciente
+             FROM pacientes_cola
+             WHERE id = $1 AND fecha = CURRENT_DATE`,
+            [req.params.id]
+        );
+        if (pacCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
+        const pc = pacRows[0];
+
+        const { rows, rowCount } = await query(
+            `INSERT INTO asignaciones_profesionales
+                (fecha, paciente_cola_id, numero_identificacion, nombre_paciente,
+                 nombre_profesional, columna_header, area, estado, activo,
+                 manual_override, origen, login_name_biofile, consultorio_profesional)
+             VALUES ($1, $2, $3, $4, $5, $5, COALESCE(NULLIF(TRIM($6),''),'PARTICULAR'),
+                     'pendiente', true, true, 'manual', NULL, NULL)
+             ON CONFLICT (fecha, numero_identificacion, columna_header)
+             DO UPDATE SET
+                 activo = true, estado = 'pendiente', manual_override = true,
+                 origen = 'manual', origen_baja = NULL,
+                 updated_at = NOW()
+             WHERE asignaciones_profesionales.activo = false
+             RETURNING *`,
+            [pc.fecha, pc.id, pc.numero_identificacion, pc.nombre_paciente,
+             profesional, area || '']
+        );
+
+        // RETURNING vacío = ya existía una fila ACTIVA con ese profesional (el WHERE
+        // del DO UPDATE bloqueó la reactivación): no se duplica ni se pisa.
+        if (rowCount === 0) return res.status(409).json({ error: 'ya_asignado' });
+
+        const io = req.app.get('io');
+        io.to(`profesional:${profesional}`).emit('asignacion:manual', rows[0]);
+        io.to('display').emit('asignacion:manual', rows[0]);
+        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+
+        return res.status(201).json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'ya_asignado' });
+        console.error('[admisiones/asignar-profesional]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // GET /api/admisiones/config-modulos
 // La cantidad de módulos es dinámica: se lee desde la configuración del módulo Admin
 // (clave 'cantidad_modulos_admisiones') y se generan los nombres "Módulo 1..N".

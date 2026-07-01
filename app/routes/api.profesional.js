@@ -58,6 +58,7 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
                AND pc.fecha = COALESCE($2::date, CURRENT_DATE)
              WHERE ap.fecha = COALESCE($2::date, CURRENT_DATE)
                AND ap.nombre_profesional = $1
+               AND ap.activo = true
                AND (ap.estado <> 'finalizado' OR COALESCE($2::date, CURRENT_DATE) <> CURRENT_DATE)
              ORDER BY
                  CASE ap.estado WHEN 'en_atencion' THEN 1 WHEN 'llamando' THEN 2 ELSE 3 END,
@@ -77,11 +78,30 @@ router.get('/listado-profesionales', async (req, res) => {
     try {
         const { rows } = await query(
             `SELECT DISTINCT nombre_profesional FROM asignaciones_profesionales
-             WHERE fecha = CURRENT_DATE ORDER BY nombre_profesional`
+             WHERE fecha = CURRENT_DATE AND activo = true ORDER BY nombre_profesional`
         );
         return res.json(rows.map(r => r.nombre_profesional));
     } catch (err) {
         console.error('[profesional/listado-profesionales]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// GET /api/profesional/catalogo
+// Nombres de profesionales vistos en los últimos 60 días, para el autocompletar al
+// asignar manualmente. A diferencia de /listado-profesionales (solo HOY, queda vacío
+// temprano), este sugiere el histórico reciente.
+router.get('/catalogo', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT DISTINCT nombre_profesional FROM asignaciones_profesionales
+             WHERE fecha >= CURRENT_DATE - INTERVAL '60 days'
+               AND nombre_profesional IS NOT NULL
+             ORDER BY nombre_profesional`
+        );
+        return res.json(rows.map(r => r.nombre_profesional));
+    } catch (err) {
+        console.error('[profesional/catalogo]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });
@@ -95,6 +115,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         const { rows: activos } = await query(
             `SELECT 1 FROM asignaciones_profesionales
              WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
+               AND activo = true
                AND estado IN ('llamando','en_atencion') LIMIT 1`,
             [profesional]
         );
@@ -107,6 +128,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
                  SELECT numero_identificacion FROM asignaciones_profesionales WHERE id = $1
              )
              AND ap2.fecha = CURRENT_DATE
+             AND ap2.activo = true
              AND ap2.nombre_profesional <> $2
              AND ap2.estado IN ('llamando','en_atencion') LIMIT 1`,
             [req.params.id, profesional]
@@ -224,6 +246,74 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         return res.json(rows[0]);
     } catch (err) {
         console.error('[profesional/finalizar]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// POST /api/profesional/reasignar/:id
+// Reasigna manualmente la asignación a otro profesional. Solo sobre filas
+// 'pendiente' o 'cancelado' (nunca en curso). Marca manual_override para que la
+// sincronización del LIS no la revierta.
+router.post('/reasignar/:id', validarTerminalId, async (req, res) => {
+    const { profesional, nuevo_profesional } = req.body;
+    if (!nuevo_profesional || !String(nuevo_profesional).trim()) {
+        return res.status(400).json({ error: 'nuevo_profesional requerido' });
+    }
+    const nuevo = String(nuevo_profesional).trim().toUpperCase();
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE asignaciones_profesionales
+             SET nombre_profesional = $2, columna_header = $2, estado = 'pendiente',
+                 activo = true, manual_override = true, origen_baja = NULL, updated_at = NOW()
+             WHERE id = $1 AND estado IN ('pendiente','cancelado')
+             RETURNING *`,
+            [req.params.id, nuevo]
+        );
+        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+
+        const io = req.app.get('io');
+        const viejo = profesional || rows[0].nombre_profesional;
+        io.to(`profesional:${viejo}`).emit('asignacion:reasignado', rows[0]);
+        io.to(`profesional:${nuevo}`).emit('asignacion:reasignado', rows[0]);
+        io.to('display').emit('asignacion:reasignado', rows[0]);
+        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+
+        return res.json(rows[0]);
+    } catch (err) {
+        // UNIQUE (fecha, numero_identificacion, columna_header): el paciente ya tiene
+        // una asignación con ese profesional destino.
+        if (err.code === '23505') return res.status(409).json({ error: 'destino_duplicado' });
+        console.error('[profesional/reasignar]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// POST /api/profesional/cancelar-asignacion/:id
+// Da de baja MANUAL una asignación (distinto de cancelar-llamado, que solo revierte
+// un 'llamando' a 'pendiente'). Solo sobre 'pendiente'/'cancelado'. El override
+// impide que la sincronización del LIS la reviva.
+router.post('/cancelar-asignacion/:id', validarTerminalId, async (req, res) => {
+    const { profesional } = req.body;
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE asignaciones_profesionales
+             SET activo = false, estado = 'cancelado', manual_override = true,
+                 origen_baja = 'manual', updated_at = NOW()
+             WHERE id = $1 AND estado IN ('pendiente','cancelado')
+             RETURNING *`,
+            [req.params.id]
+        );
+        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+
+        const io = req.app.get('io');
+        const prof = profesional || rows[0].nombre_profesional;
+        io.to(`profesional:${prof}`).emit('asignacion:cancelado_manual', rows[0]);
+        io.to('display').emit('asignacion:cancelado_manual', rows[0]);
+        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[profesional/cancelar-asignacion]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });
