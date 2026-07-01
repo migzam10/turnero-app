@@ -49,12 +49,12 @@ function dividirNombre(nombre) {
 
 // POST /api/extension/sync
 router.post('/sync', async (req, res) => {
-    const { loginName, terminalId, pacientes } = req.body;
+    const { loginName, terminalId, pacientes, snapshotCompleto } = req.body;
     if (!loginName || !Array.isArray(pacientes)) {
         return res.status(400).json({ error: 'loginName y pacientes[] requeridos' });
     }
 
-    const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, errores: 0 };
+    const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, reconciliados: 0, errores: 0 };
 
     for (const p of pacientes) {
         const { numeroIdentificacion, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
@@ -105,6 +105,15 @@ router.post('/sync', async (req, res) => {
                      paciente_cola_id = COALESCE(asignaciones_profesionales.paciente_cola_id, EXCLUDED.paciente_cola_id),
                      nombre_paciente = COALESCE(EXCLUDED.nombre_paciente, asignaciones_profesionales.nombre_paciente),
                      hora_llegada_biofile = EXCLUDED.hora_llegada_biofile,
+                     -- Blindaje contra resurrección: si un humano la gestionó (manual_override)
+                     -- la sincronización respeta su estado; si la dio de baja la reconciliación
+                     -- (cancelado por LIS) y el paciente reaparece, se reactiva como pendiente.
+                     activo = CASE WHEN asignaciones_profesionales.manual_override
+                                   THEN asignaciones_profesionales.activo ELSE true END,
+                     estado = CASE WHEN asignaciones_profesionales.manual_override
+                                   THEN asignaciones_profesionales.estado
+                                   WHEN asignaciones_profesionales.estado = 'cancelado' THEN 'pendiente'
+                                   ELSE asignaciones_profesionales.estado END,
                      updated_at = NOW()
                  RETURNING (xmax = 0) AS es_nuevo`,
                 [fechaParam, pacienteColaId, numeroIdentificacion, nombrePaciente || null, nombreProfesional,
@@ -125,9 +134,70 @@ router.post('/sync', async (req, res) => {
         }
     }
 
-    if (resultados.nuevos > 0) {
-        const io = req.app.get('io');
-        io.to(`profesional:${loginName}`).emit('extension:sync', { loginName, resultados });
+    // ── State Reconciliation ──────────────────────────────────────────────────
+    // Solo se reconcilia cuando el cliente garantiza que `pacientes` es el snapshot
+    // COMPLETO del LIS para ese login. Con snapshot parcial (o vacío) jamás se da de
+    // baja nada, para no borrar en masa por un fallo de scraping (modo seguro).
+    if (snapshotCompleto === true && pacientes.length > 0) {
+        // Agrupa las claves entrantes por fecha efectiva (COALESCE(fecha, CURRENT_DATE)).
+        // Las fechas ausentes/ inválidas comparten un grupo cuyo scope cae a CURRENT_DATE.
+        const grupos = new Map(); // key -> { fechaParam, claves:Set }
+        for (const p of pacientes) {
+            if (!p.numeroIdentificacion || !p.nombreProfesional || !p.columnaHeader) continue;
+            const fechaParam = fechaValida(p.fecha) ? p.fecha : null;
+            const key = fechaParam === null ? '__hoy__' : fechaParam;
+            if (!grupos.has(key)) grupos.set(key, { fechaParam, claves: new Set() });
+            grupos.get(key).claves.add(`${p.numeroIdentificacion}|${p.columnaHeader}`);
+        }
+
+        for (const { fechaParam, claves } of grupos.values()) {
+            const rc = await pool.connect();
+            try {
+                await rc.query('BEGIN');
+                // Bloquea el scope (fecha, login) para evitar carreras con upserts concurrentes.
+                const { rows: existentes } = await rc.query(
+                    `SELECT id, numero_identificacion, columna_header, estado, manual_override
+                     FROM asignaciones_profesionales
+                     WHERE fecha = COALESCE($1::date, CURRENT_DATE)
+                       AND login_name_biofile = $2
+                       AND activo = true
+                       AND origen = 'biofile'
+                     FOR UPDATE`,
+                    [fechaParam, loginName]
+                );
+                for (const row of existentes) {
+                    const clave = `${row.numero_identificacion}|${row.columna_header}`;
+                    if (claves.has(clave)) continue;                       // sigue en el LIS
+                    if (['llamando', 'en_atencion', 'finalizado'].includes(row.estado)) continue; // en curso
+                    if (row.manual_override) continue;                     // gestionado por un humano
+                    await rc.query(
+                        `UPDATE asignaciones_profesionales
+                         SET activo = false, estado = 'cancelado',
+                             origen_baja = 'lis', updated_at = NOW()
+                         WHERE id = $1`,
+                        [row.id]
+                    );
+                    resultados.reconciliados++;
+                }
+                await rc.query('COMMIT');
+            } catch (err) {
+                await rc.query('ROLLBACK').catch(() => {});
+                console.error('[extension/sync] reconciliación error:', err.message);
+            } finally {
+                rc.release();
+            }
+        }
+    }
+
+    // PASO 5 — Reactividad: en cuanto entra un payload exitoso notificamos a los clientes
+    // para que recarguen sin intervención humana. UPDATE_PATIENTS es global (cualquier vista
+    // que renderice estos datos lo escucha); extension:sync se mantiene para el profesional.
+    const io = req.app.get('io');
+    if (io) {
+        io.emit('UPDATE_PATIENTS', { loginName, resultados, ts: Date.now() });
+        if (resultados.nuevos > 0) {
+            io.to(`profesional:${loginName}`).emit('extension:sync', { loginName, resultados });
+        }
     }
 
     return res.json({ ok: true, ...resultados });

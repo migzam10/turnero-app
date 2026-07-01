@@ -326,7 +326,7 @@ router.get('/estado-display', async (req, res) => {
                     COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
-             WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando'
+             WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando' AND ap.activo = true
              ORDER BY ap.nombre_profesional`
         );
         const { rows: modulos } = await query(
