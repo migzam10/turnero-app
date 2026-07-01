@@ -105,6 +105,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         io.to('recepcion').emit('paciente:nuevo', rows[0]);
         io.to('admisiones').emit('paciente:nuevo', rows[0]);
         io.to('display').emit('paciente:nuevo', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.status(201).json(rows[0]);
     } catch (err) {
@@ -166,6 +167,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('recepcion').emit('paciente:actualizado', rows[0]);
         io.to('admisiones').emit('paciente:actualizado', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -195,6 +197,7 @@ router.patch('/:id/prioridad', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('recepcion').emit('paciente:prioridad', rows[0]);
         io.to('admisiones').emit('paciente:prioridad', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
 
         return res.json(rows[0]);
     } catch (err) {

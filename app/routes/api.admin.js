@@ -128,6 +128,84 @@ router.get('/resumen-dia', async (req, res) => {
     }
 });
 
+// ── Dashboard en vivo (una sola llamada) ──────────────────────
+// Alimenta el panel Admin en tiempo real con queries LIGERAS (sin JSON_AGG por
+// paciente, a diferencia de /reporte-detallado). No reemplaza a /resumen-dia ni a
+// /reporte-detallado: es adicional y autocontenido. Respeta el parámetro `fecha`
+// (histórico); no fuerza CURRENT_DATE.
+router.get('/dashboard', async (req, res) => {
+    const fecha = req.query.fecha || fechaHoyBogota();
+    try {
+        const [cola, asig, colaPendiente, porProfesional] = await Promise.all([
+            query(
+                `SELECT
+                    COUNT(*)                                                       AS total_registrados,
+                    COUNT(*) FILTER (WHERE estado_admision = 'admisionado')        AS total_admisionados,
+                    COUNT(*) FILTER (WHERE estado_admision = 'esperando')          AS en_espera,
+                    COUNT(*) FILTER (WHERE estado_admision = 'llamando_admision')  AS siendo_llamados,
+                    COUNT(*) FILTER (WHERE prioridad = 'alta')                     AS prioridad_alta,
+                    ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llegada))/60)
+                          FILTER (WHERE hora_admision IS NOT NULL))                AS avg_min_espera_admision
+                 FROM pacientes_cola WHERE fecha = $1`,
+                [fecha]
+            ),
+            query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE estado = 'pendiente' AND activo)   AS pendientes,
+                    COUNT(*) FILTER (WHERE estado = 'llamando' AND activo)    AS llamando,
+                    COUNT(*) FILTER (WHERE estado = 'en_atencion' AND activo) AS en_atencion,
+                    COUNT(*) FILTER (WHERE estado = 'finalizado' AND activo)  AS finalizados,
+                    COUNT(DISTINCT nombre_profesional) FILTER (WHERE activo)  AS profesionales_activos,
+                    COUNT(*) FILTER (WHERE estado = 'cancelado' AND origen_baja = 'lis')    AS cancelados_lis,
+                    COUNT(*) FILTER (WHERE estado = 'cancelado' AND origen_baja = 'manual') AS cancelados_manual,
+                    COUNT(*) FILTER (WHERE origen = 'manual' AND activo)      AS particulares
+                 FROM asignaciones_profesionales WHERE fecha = $1`,
+                [fecha]
+            ),
+            query(
+                `SELECT numero_identificacion,
+                        primer_nombre || ' ' || COALESCE(segundo_nombre || ' ','') ||
+                        primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_completo,
+                        hora_llegada, prioridad, estado_admision
+                 FROM pacientes_cola
+                 WHERE fecha = $1 AND estado_admision <> 'admisionado'
+                 ORDER BY
+                     CASE prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
+                     hora_llegada
+                 LIMIT 15`,
+                [fecha]
+            ),
+            query(
+                `SELECT
+                    ap.nombre_profesional, ap.area,
+                    COUNT(*) FILTER (WHERE ap.activo)                                 AS asignados_activos,
+                    COUNT(*) FILTER (WHERE ap.estado IN ('llamando','en_atencion') AND ap.activo) AS en_proceso,
+                    COUNT(*) FILTER (WHERE ap.estado = 'finalizado' AND ap.activo)    AS finalizados,
+                    COUNT(*) FILTER (WHERE ap.estado = 'cancelado')                   AS cancelados,
+                    ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
+                          FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
+                                                                                      AS avg_min_atencion
+                 FROM asignaciones_profesionales ap
+                 WHERE ap.fecha = $1
+                 GROUP BY ap.nombre_profesional, ap.area
+                 ORDER BY ap.nombre_profesional`,
+                [fecha]
+            ),
+        ]);
+
+        return res.json({
+            fecha,
+            cola: cola.rows[0],
+            asignaciones: asig.rows[0],
+            cola_pendiente: colaPendiente.rows,
+            por_profesional: porProfesional.rows,
+        });
+    } catch (err) {
+        console.error('[admin/dashboard]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // ── Lista de pacientes del día ────────────────────────────────
 
 router.get('/pacientes', async (req, res) => {
@@ -278,6 +356,10 @@ router.get('/reporte-detallado', async (req, res) => {
                 ap.origen_baja,
                 ap.activo,
                 ap.hora_llegada_biofile,
+                -- Hora de admisión unificada: Biofile usa su timestamp; el particular
+                -- (origen='manual') cae a la admisión del sistema (T2). Si ambos son
+                -- NULL queda NULL (no cae a T1); el front muestra '—'.
+                COALESCE(ap.hora_llegada_biofile, pc.hora_admision) AS hora_admisionado,
                 ap.hora_llamado,
                 ap.hora_en_atencion,
                 ap.hora_finalizado,
