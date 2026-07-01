@@ -63,6 +63,7 @@ tr:hover td { background: #f8fafc; }
 .b-pendiente { background: #f1f5f9; color: var(--gris); }
 .b-en_atencion { background: #dbeafe; color: var(--azul2); }
 .b-finalizado { background: #dcfce7; color: var(--verde); }
+.b-cancelado { background: #fee2e2; color: var(--rojo); }
 .b-alta { background: #fee2e2; color: var(--rojo); }
 .b-media { background: #fef3c7; color: #92400e; }
 .b-normal { background: #f1f5f9; color: var(--gris); }
@@ -372,6 +373,8 @@ async function cargarDashboard() {
             <div class="kpi-card kpi-verde"><div class="kpi-num">${asignaciones.finalizados||0}</div><div class="kpi-label">Finalizados</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${cola.avg_min_espera_admision||'—'}</div><div class="kpi-label">Min. espera prom.</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${asignaciones.profesionales_activos||0}</div><div class="kpi-label">Profesionales activos</div></div>
+            <div class="kpi-card kpi-naranja"><div class="kpi-num">${asignaciones.particulares??0}</div><div class="kpi-label">Particulares</div></div>
+            <div class="kpi-card kpi-rojo"><div class="kpi-num">${Number(asignaciones.cancelados_lis??0)+Number(asignaciones.cancelados_manual??0)}</div><div class="kpi-label">Bajas hoy</div></div>
         `;
 
         // Tabla admisiones
@@ -391,14 +394,15 @@ async function cargarDashboard() {
         const resp2 = await fetchAdmin(`/api/admin/reporte-detallado?fecha=${fechaHoy()}`);
         const det = await resp2.json();
         document.getElementById('tabla-profesionales-dash').innerHTML = `
-            <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>En proceso</th><th>Finalizados</th><th>Prom. atención</th></tr></thead>
+            <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>En proceso</th><th>Finalizados</th><th>Cancelados</th><th>Prom. atención</th></tr></thead>
             <tbody>${det.por_profesional?.length ? det.por_profesional.map(p => `
                 <tr><td>${esc(p.nombre_profesional)}</td><td>${esc(p.area)}</td>
-                <td>${p.total_asignados}</td>
+                <td>${p.asignados_activos??0}</td>
                 <td>${p.en_proceso||0}</td>
                 <td>${p.finalizados||0}</td>
+                <td>${Number(p.cancelados_lis??0)+Number(p.cancelados_manual??0)}</td>
                 <td>${p.avg_min_atencion ? p.avg_min_atencion + ' min' : '—'}</td></tr>
-            `).join('') : '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>`;
+            `).join('') : '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>`;
     } catch (e) { console.error(e); }
 }
 
@@ -531,18 +535,21 @@ function renderReporteDetallado(data) {
             <div class="kpi-card kpi-verde"><div class="kpi-num">${k.admisionados||0}</div><div class="kpi-label">Admisionados</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_espera_admision||'—'}</div><div class="kpi-label">Min. espera admisión</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_tiempo_atencion_general||'—'}</div><div class="kpi-label">Min. prom. atención</div></div>
+            <div class="kpi-card kpi-naranja"><div class="kpi-num">${k.particulares??0}</div><div class="kpi-label">Particulares</div></div>
+            <div class="kpi-card kpi-rojo"><div class="kpi-num">${k.bajas_lis??0} / ${k.bajas_manual??0}</div><div class="kpi-label">Bajas (LIS/Manual)</div></div>
         </div>
         <div class="seccion" style="margin-bottom:16px">
             <div class="seccion-header"><span class="seccion-titulo">Por profesional</span></div>
             <div class="tabla-wrapper"><table>
-                <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>Finalizados</th><th>En proceso</th><th>Pend.</th><th>Prom. atención</th><th>Min.</th><th>Max.</th></tr></thead>
+                <thead><tr><th>Profesional</th><th>Área</th><th>Asignados</th><th>Atendidos</th><th>En proceso</th><th>Pend.</th><th>Cancel. LIS</th><th>Cancel. Manual</th><th>Particulares</th><th>Prom. atención</th><th>Min.</th><th>Max.</th></tr></thead>
                 <tbody>${(data.por_profesional||[]).map(p => `
                     <tr><td>${esc(p.nombre_profesional)}</td><td>${esc(p.area)}</td>
-                    <td>${p.total_asignados}</td><td>${p.finalizados||0}</td><td>${p.en_proceso||0}</td><td>${p.pendientes||0}</td>
+                    <td>${p.asignados_activos??0}</td><td>${p.finalizados||0}</td><td>${p.en_proceso||0}</td><td>${p.pendientes||0}</td>
+                    <td>${p.cancelados_lis??0}</td><td>${p.cancelados_manual??0}</td><td>${p.particulares??0}</td>
                     <td>${p.avg_min_atencion ? p.avg_min_atencion + ' min' : '—'}</td>
                     <td>${p.min_min_atencion ? p.min_min_atencion + ' min' : '—'}</td>
                     <td>${p.max_min_atencion ? p.max_min_atencion + ' min' : '—'}</td></tr>
-                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                `).join('')||'<tr><td colspan="12" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
             </table></div>
         </div>
         <div class="seccion" style="margin-bottom:16px">
@@ -562,20 +569,27 @@ function renderReporteDetallado(data) {
         <div class="seccion">
             <div class="seccion-header"><span class="seccion-titulo">Reporte por admisión — Llegada · Llamado · Finalización</span></div>
             <div class="tabla-wrapper"><table>
-                <thead><tr><th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Estado</th><th>Llegada Biofile</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
-                <tbody>${(data.asignaciones||[]).map(a => `
-                    <tr>
+                <thead><tr><th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Origen</th><th>Estado</th><th>Llegada Biofile</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
+                <tbody>${(data.asignaciones||[]).map(a => {
+                    // Las bajas (estado 'cancelado') se atenúan y muestran el origen de la baja.
+                    const esBaja = a.estado === 'cancelado';
+                    const estadoTxt = esBaja
+                        ? `cancelado (${a.origen_baja === 'lis' ? 'LIS' : a.origen_baja === 'manual' ? 'manual' : '—'})`
+                        : a.estado;
+                    return `
+                    <tr${esBaja ? ' style="opacity:.55"' : ''}>
                         <td>${esc(a.cedula)}</td>
                         <td>${esc(a.nombre)}</td>
                         <td>${esc(a.nombre_profesional)}</td>
                         <td>${esc(a.area)}</td>
-                        <td><span class="badge b-${esc(a.estado)}">${esc(a.estado)}</span></td>
+                        <td><span class="badge ${a.origen === 'manual' ? 'b-media' : 'b-normal'}">${a.origen === 'manual' ? 'Particular' : 'Biofile'}</span></td>
+                        <td><span class="badge b-${esc(a.estado)}">${esc(estadoTxt)}</span></td>
                         <td>${horaFmt(a.hora_llegada_biofile)}</td>
                         <td>${horaFmt(a.hora_llamado)}</td>
                         <td>${horaFmt(a.hora_finalizado)}</td>
                         <td>${a.min_atencion ? a.min_atencion + ' min' : '—'}</td>
-                    </tr>
-                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                    </tr>`;
+                }).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
             </table></div>
         </div>`;
 }
@@ -584,13 +598,15 @@ function renderReporteRango(data) {
     return `<div class="seccion">
         <div class="seccion-header"><span class="seccion-titulo">Resumen por profesional — ${data.desde} al ${data.hasta}</span></div>
         <div class="tabla-wrapper"><table>
-            <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Prom. atención</th><th>Espera prom.</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Cancelados</th><th>Particulares</th><th>Prom. atención</th><th>Espera prom.</th></tr></thead>
             <tbody>${(data.datos||[]).map(r => `
                 <tr><td>${esc(r.fecha)}</td><td>${esc(r.nombre_profesional)}</td><td>${esc(r.area)}</td>
                 <td>${r.pacientes_atendidos||0}</td>
+                <td>${r.cancelados??0}</td>
+                <td>${r.particulares??0}</td>
                 <td>${r.avg_min_atencion ? r.avg_min_atencion + ' min' : '—'}</td>
                 <td>${r.avg_espera_admision ? r.avg_espera_admision + ' min' : '—'}</td></tr>
-            `).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+            `).join('')||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
         </table></div>
     </div>`;
 }
@@ -599,14 +615,14 @@ function exportarCSVReporte() {
     if (!dataReporte) return;
     let filas;
     if (dataReporte.asignaciones) {
-        filas = [['Cedula','Paciente','Profesional','Area','Estado','Llegada.Biofile','Hora.Llamado','Hora.Finalizado','Min.Atencion']];
-        (dataReporte.asignaciones||[]).forEach(a => filas.push([a.cedula,a.nombre,a.nombre_profesional,a.area,a.estado,horaFmt(a.hora_llegada_biofile),horaFmt(a.hora_llamado),horaFmt(a.hora_finalizado),a.min_atencion||'']));
+        filas = [['Cedula','Paciente','Profesional','Area','Estado','Origen','Origen.Baja','Llegada.Biofile','Hora.Llamado','Hora.Finalizado','Min.Atencion']];
+        (dataReporte.asignaciones||[]).forEach(a => filas.push([a.cedula,a.nombre,a.nombre_profesional,a.area,a.estado,a.origen||'',a.origen_baja||'',horaFmt(a.hora_llegada_biofile),horaFmt(a.hora_llamado),horaFmt(a.hora_finalizado),a.min_atencion||'']));
     } else if (dataReporte.timeline) {
         filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Min.Espera','Min.Total']];
         (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_tiempo_total_clinica||'']));
     } else {
-        filas = [['Fecha','Profesional','Area','Atendidos','Prom.Atencion','Espera.Prom']];
-        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.avg_min_atencion||'',r.avg_espera_admision||'']));
+        filas = [['Fecha','Profesional','Area','Atendidos','Cancelados','Particulares','Prom.Atencion','Espera.Prom']];
+        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.cancelados??0,r.particulares??0,r.avg_min_atencion||'',r.avg_espera_admision||'']));
     }
     descargarCSV(filas, `reporte_${document.getElementById('rep-desde').value}_${document.getElementById('rep-hasta').value}.csv`);
 }
