@@ -164,3 +164,12 @@ ALTER TABLE asignaciones_profesionales
 -- Índice parcial para el scope de reconciliación (fecha + login, solo activos).
 CREATE INDEX IF NOT EXISTS idx_asig_login_fecha
     ON asignaciones_profesionales(fecha, login_name_biofile) WHERE activo = true;
+
+-- Flujo de admisiones de 2 tiempos: se añade el estado intermedio 'admisionando'
+-- (Admisionando → Finalizar), espejo del flujo de profesionales. El CHECK inline
+-- original se elimina por su nombre autogenerado y se recrea (idempotente).
+ALTER TABLE pacientes_cola
+    DROP CONSTRAINT IF EXISTS pacientes_cola_estado_admision_check;
+ALTER TABLE pacientes_cola
+    ADD CONSTRAINT pacientes_cola_estado_admision_check
+    CHECK (estado_admision IN ('esperando','llamando_admision','admisionando','admisionado'));

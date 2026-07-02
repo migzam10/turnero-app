@@ -16,7 +16,7 @@ router.get('/cola', validarTerminalId, async (req, res) => {
                     prioridad, estado_admision, hora_llegada, modulo_admision
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
-               AND estado_admision IN ('esperando','llamando_admision')
+               AND estado_admision IN ('esperando','llamando_admision','admisionando')
              ORDER BY
                  CASE prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
                  hora_llegada`
@@ -37,7 +37,6 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         const { rows, rowCount } = await query(
             `UPDATE pacientes_cola
              SET estado_admision = 'llamando_admision',
-                 hora_llamado_admision = NOW(),
                  modulo_admision = $1,
                  updated_at = NOW()
              WHERE id = $2 AND fecha = CURRENT_DATE AND estado_admision = 'esperando'
@@ -58,15 +57,51 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
     }
 });
 
-// POST /api/admisiones/admisionar/:id
-router.post('/admisionar/:id', validarTerminalId, async (req, res) => {
+// POST /api/admisiones/admisionando/:id
+// Tiempo 1 del flujo de 2 pasos: el paciente pasa a estar en proceso de admisión.
+// Aquí sí se marca hora_llamado_admision (el momento real en que se le atiende) y
+// se emite admision:completada para RETIRARLO DEL DISPLAY, aunque el proceso siga
+// abierto en el módulo hasta Finalizar. Guard: solo desde 'llamando_admision'.
+router.post('/admisionando/:id', validarTerminalId, async (req, res) => {
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE pacientes_cola
+             SET estado_admision = 'admisionando',
+                 hora_llamado_admision = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1 AND fecha = CURRENT_DATE AND estado_admision = 'llamando_admision'
+             RETURNING *`,
+            [req.params.id]
+        );
+        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+
+        const io = req.app.get('io');
+        // Reusa admision:completada porque es el evento que el display ya escucha
+        // para quitar al paciente de la pantalla.
+        io.to('admisiones').emit('admision:completada', rows[0]);
+        io.to('display').emit('admision:completada', rows[0]);
+        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[admisiones/admisionando]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// POST /api/admisiones/finalizar/:id
+// Tiempo 2 del flujo: cierra la admisión. hora_admision se respeta si Biofile ya la
+// sobrescribió durante el sync (COALESCE); si aún no hubo cruce se pone NOW() y un
+// sync posterior la reemplazará por la hora de Biofile. Guard: solo desde
+// 'admisionando'. Ya no hace falta quitar del display (se hizo en Admisionando).
+router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
     try {
         const { rows, rowCount } = await query(
             `UPDATE pacientes_cola
              SET estado_admision = 'admisionado',
-                 hora_admision = NOW(),
+                 hora_admision = COALESCE(hora_admision, NOW()),
                  updated_at = NOW()
-             WHERE id = $1 AND fecha = CURRENT_DATE AND estado_admision = 'llamando_admision'
+             WHERE id = $1 AND fecha = CURRENT_DATE AND estado_admision = 'admisionando'
              RETURNING *`,
             [req.params.id]
         );
@@ -80,7 +115,7 @@ router.post('/admisionar/:id', validarTerminalId, async (req, res) => {
 
         return res.json(rows[0]);
     } catch (err) {
-        console.error('[admisiones/admisionar]', err);
+        console.error('[admisiones/finalizar]', err);
         return res.status(500).json({ error: 'db_error' });
     }
 });

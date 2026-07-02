@@ -120,6 +120,22 @@ router.post('/sync', async (req, res) => {
                  area, columnaHeader, horaLlegadaBiofile || null, terminalId || null, loginName]
             );
 
+            // Regla de negocio: cuando hay cruce con Biofile, hora_admision del paciente
+            // ES la hora del LIS (sobrescritura destructiva). Se toma el MIN de las horas
+            // de Biofile de todas sus asignaciones (estable si tiene varias). Sin cruce
+            // (particular/manual) min_bio es NULL y no se toca nada. IS DISTINCT FROM
+            // evita reescribir en cada sync cuando el valor ya coincide.
+            await client.query(
+                `UPDATE pacientes_cola pc
+                 SET hora_admision = sub.min_bio, updated_at = NOW()
+                 FROM (SELECT MIN(hora_llegada_biofile) AS min_bio
+                       FROM asignaciones_profesionales
+                       WHERE paciente_cola_id = $1 AND hora_llegada_biofile IS NOT NULL) sub
+                 WHERE pc.id = $1 AND sub.min_bio IS NOT NULL
+                   AND pc.hora_admision IS DISTINCT FROM sub.min_bio`,
+                [pacienteColaId]
+            );
+
             await client.query('COMMIT');
 
             if (rows[0]?.es_nuevo) resultados.nuevos++;
