@@ -136,6 +136,7 @@ tr:hover td { background: #f8fafc; }
     <div class="tab activo" data-tab="dashboard" onclick="mostrarTab('dashboard')">Dashboard</div>
     <div class="tab" data-tab="pacientes" onclick="mostrarTab('pacientes')">Pacientes</div>
     <div class="tab" data-tab="reportes" onclick="mostrarTab('reportes')">Reportes</div>
+    <div class="tab" data-tab="graficas" onclick="mostrarTab('graficas')">Gráficas</div>
     <div class="tab" data-tab="configuracion" onclick="mostrarTab('configuracion')">Configuración</div>
     <div class="tab" data-tab="terminales" onclick="mostrarTab('terminales')">Terminales</div>
 </div>
@@ -194,6 +195,33 @@ tr:hover td { background: #f8fafc; }
             <button class="btn-exportar" onclick="exportarCSVReporte()">CSV</button>
         </div>
         <div id="contenido-reporte"></div>
+    </div>
+
+    <!-- ─────────── GRÁFICAS ─────────── -->
+    <div class="panel" id="panel-graficas">
+        <div class="fecha-row">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
+            <input type="date" id="graficas-fecha">
+            <button class="btn-buscar" onclick="cargarGraficas()">Generar</button>
+        </div>
+        <!-- Aviso de degradación: visible solo si Chart.js no cargó desde el CDN -->
+        <div class="seccion" id="graficas-fallback" style="display:none">
+            <div style="padding:20px;color:var(--gris);font-size:.9rem">
+                No se pudieron cargar las gráficas: sin conexión al CDN. Los reportes en tabla siguen disponibles.
+            </div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Embudo del pipeline</span></div>
+            <div style="padding:16px;position:relative;height:320px"><canvas id="chart-embudo"></canvas></div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Flujo por hora — Llegadas vs Atenciones</span></div>
+            <div style="padding:16px;position:relative;height:320px"><canvas id="chart-flujo"></canvas></div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Finalizados por profesional</span></div>
+            <div style="padding:16px;position:relative;height:360px"><canvas id="chart-profesional"></canvas></div>
+        </div>
     </div>
 
     <!-- ─────────── CONFIGURACIÓN ─────────── -->
@@ -259,6 +287,9 @@ tr:hover td { background: #f8fafc; }
 </div>
 </div><!-- /app-admin -->
 
+<!-- Chart.js por CDN: única dependencia externa. La lógica de gráficas degrada
+     elegantemente si no carga (ver cargarGraficas → typeof Chart). -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/branding.js"></script>
 <script>
@@ -354,6 +385,7 @@ function mostrarTab(nombre) {
     if (panel) panel.classList.add('activo');
 
     if (nombre === 'dashboard') cargarDashboard();
+    if (nombre === 'graficas') cargarGraficas();
     if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); }
     if (nombre === 'terminales') cargarTerminales();
 }
@@ -662,6 +694,116 @@ function exportarCSVReporte() {
         (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.cancelados??0,r.particulares??0,r.avg_min_atencion||'',r.avg_espera_admision||'']));
     }
     descargarCSV(filas, `reporte_${document.getElementById('rep-desde').value}_${document.getElementById('rep-hasta').value}.csv`);
+}
+
+// ── Gráficas (Chart.js por CDN, con degradación elegante) ─────
+// Paleta alineada con :root para no depender de librerías de color externas.
+const GRAFICAS_PALETA = {
+    azul: '#1a3a6e', azul2: '#2563eb', verde: '#16a34a',
+    naranja: '#d97706', rojo: '#dc2626', gris: '#64748b'
+};
+// Instancias vivas: se destruyen antes de recrear (Chart.js falla si reutilizas canvas).
+let chartEmbudo = null, chartFlujo = null, chartProfesional = null;
+
+// Fecha por defecto (hoy) y tope (no futuras), igual que el resto de selectores.
+(() => {
+    const g = document.getElementById('graficas-fecha');
+    if (g) { g.value = fechaHoy(); g.max = fechaHoy(); }
+})();
+
+async function cargarGraficas() {
+    const fallback = document.getElementById('graficas-fallback');
+    // Degradación elegante: si el CDN no cargó, avisar y salir sin lanzar excepciones.
+    if (typeof Chart === 'undefined') {
+        if (fallback) fallback.style.display = '';
+        console.warn('[graficas] Chart.js no disponible (CDN no cargó)');
+        return;
+    }
+    if (fallback) fallback.style.display = 'none';
+
+    const fecha = document.getElementById('graficas-fecha').value || fechaHoy();
+    let data;
+    try {
+        const resp = await fetchAdmin(`/api/admin/graficas?fecha=${fecha}`);
+        data = await resp.json();
+    } catch (e) {
+        // Token expirado / red: no romper la pestaña, conservar lo que hubiera.
+        console.error('[cargarGraficas]', e);
+        return;
+    }
+
+    const n = v => Number(v ?? 0) || 0; // los conteos llegan como string desde pg
+
+    // Destruir instancias previas para no fugar canvas al regenerar/cambiar de fecha.
+    if (chartEmbudo) chartEmbudo.destroy();
+    if (chartFlujo) chartFlujo.destroy();
+    if (chartProfesional) chartProfesional.destroy();
+
+    // ── Embudo del pipeline (barras horizontales) ──
+    const e = data.embudo || {};
+    chartEmbudo = new Chart(document.getElementById('chart-embudo'), {
+        type: 'bar',
+        data: {
+            labels: ['Registrados', 'Admisionados', 'Llamados', 'En atención', 'Finalizados'],
+            datasets: [{
+                label: 'Pacientes',
+                data: [n(e.registrados), n(e.admisionados), n(e.llamados), n(e.en_atencion), n(e.finalizados)],
+                backgroundColor: [GRAFICAS_PALETA.azul, GRAFICAS_PALETA.azul2, GRAFICAS_PALETA.naranja, GRAFICAS_PALETA.gris, GRAFICAS_PALETA.verde]
+            }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+
+    // ── Flujo por hora (líneas: llegadas vs atenciones) ──
+    const flujo = data.flujo_horario || [];
+    chartFlujo = new Chart(document.getElementById('chart-flujo'), {
+        type: 'line',
+        data: {
+            labels: flujo.map(f => n(f.hora) + 'h'),
+            datasets: [
+                { label: 'Llegadas', data: flujo.map(f => n(f.llegadas)), borderColor: GRAFICAS_PALETA.azul2, backgroundColor: GRAFICAS_PALETA.azul2, tension: .3 },
+                { label: 'Atenciones', data: flujo.map(f => n(f.atenciones)), borderColor: GRAFICAS_PALETA.verde, backgroundColor: GRAFICAS_PALETA.verde, tension: .3 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+
+    // ── Finalizados por profesional (barras, tooltip con promedio) ──
+    const prof = data.por_profesional || [];
+    chartProfesional = new Chart(document.getElementById('chart-profesional'), {
+        type: 'bar',
+        data: {
+            labels: prof.map(p => p.nombre_profesional || '—'),
+            datasets: [{
+                label: 'Finalizados',
+                data: prof.map(p => n(p.finalizados)),
+                backgroundColor: GRAFICAS_PALETA.azul2
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: (ctx) => {
+                            const avg = prof[ctx.dataIndex] && prof[ctx.dataIndex].avg_min_atencion;
+                            return avg != null ? `Prom. atención: ${avg} min` : 'Prom. atención: —';
+                        }
+                    }
+                }
+            },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
 }
 
 // ── Configuración ─────────────────────────────────────────────
