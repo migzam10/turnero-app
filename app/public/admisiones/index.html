@@ -289,10 +289,13 @@ function renderCola() {
     // que están siendo procesados por otro módulo no se muestran en esta terminal.
     const visibles = colaActual.filter(p =>
         p.estado_admision === 'esperando' ||
-        (p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual)
+        (p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual) ||
+        (p.estado_admision === 'admisionando' && p.modulo_admision === moduloActual)
     );
     const espera = visibles.filter(p => p.estado_admision === 'esperando');
-    const enProceso = visibles.filter(p => p.estado_admision === 'llamando_admision');
+    // "En proceso" abarca las dos etapas del flujo (llamando → admisionando): mientras
+    // exista un paciente en cualquiera de ellas, "Llamar" queda bloqueado.
+    const enProceso = visibles.filter(p => p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando');
 
     document.getElementById('count-espera').textContent = espera.length;
 
@@ -308,23 +311,33 @@ function renderCola() {
     }
 
     listaEl.innerHTML = visibles.map(p => {
-        const activo = p.estado_admision === 'llamando_admision';
+        const llamando = p.estado_admision === 'llamando_admision';
+        const admisionando = p.estado_admision === 'admisionando';
+        const activo = llamando || admisionando; // marca de tarjeta para ambas etapas en proceso
         const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
 
-        // Al "Llamar", la fila no se mueve: solo cambian sus controles. Un paciente
-        // en proceso muestra "Sonar" (reenvía la alerta) más las acciones de cierre.
+        // Flujo de dos pasos: al "Llamar" la fila no se mueve, solo cambian sus controles.
+        //   • llamando_admision → Sonar + Admisionando (inicia el trámite) + Cancelar
+        //   • admisionando      → Finalizar (cierra el trámite); sin Sonar ni Cancelar
         // "Asignar a profesional": disponible para todo paciente presente hoy en la cola
         // (esperando o en proceso por este módulo); es un flujo manual para particulares.
         const btnAsignar = `<button class="btn-sm btn-asignar" onclick="abrirAsignar('${p.id}')">Asignar a profesional</button>`;
-        const botones = activo
-            ? `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+        let botones;
+        if (admisionando) {
+            botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+               <button class="btn-sm btn-admisionar" onclick="finalizarPaciente('${p.id}')">Finalizar</button>
+               ${btnAsignar}`;
+        } else if (llamando) {
+            botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                <button class="btn-sm btn-sonar" onclick="sonarPaciente('${p.id}')" title="Volver a sonar la alerta en el display">Sonar</button>
-               <button class="btn-sm btn-admisionar" onclick="admisionarPaciente('${p.id}')">Admisionado</button>
+               <button class="btn-sm btn-admisionar" onclick="admisionandoPaciente('${p.id}')">Admisionando</button>
                <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">Cancelar</button>
-               ${btnAsignar}`
-            : `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+               ${btnAsignar}`;
+        } else {
+            botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                <button class="btn-sm btn-llamar" onclick="llamarPaciente('${p.id}')" ${bloquearLlamar ? 'disabled' : ''}>Llamar</button>
                ${btnAsignar}`;
+        }
 
         return `<div class="pac-card${activo ? ' activo' : ''}">
             <div class="pac-top">
@@ -349,7 +362,7 @@ function sonarPaciente(id) {
 // ── Acciones ────────────────────────────────────────────────────
 // ¿Este módulo ya tiene un paciente en proceso (llamado y aún sin admisionar/cancelar)?
 function moduloOcupado() {
-    return colaActual.some(p => p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual);
+    return colaActual.some(p => (p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando') && p.modulo_admision === moduloActual);
 }
 
 async function llamarPaciente(id) {
@@ -376,14 +389,37 @@ async function llamarPaciente(id) {
     }
 }
 
-async function admisionarPaciente(id) {
+// Paso 1 del flujo de dos etapas: el paciente pasa de "llamando_admision" a
+// "admisionando". El backend emite admision:completada (lo saca del display).
+async function admisionandoPaciente(id) {
     try {
-        const resp = await fetch(`/api/admisiones/admisionar/${id}`, {
+        const resp = await fetch(`/api/admisiones/admisionando/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID }
         });
-        if (resp.ok) { cerrarModal(); cargarCola(); }
-    } catch {}
+        if (resp.ok) { cerrarModal(); cargarCola(); return; }
+        const d = await resp.json().catch(() => ({}));
+        alert(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo iniciar la admisión'));
+        cargarCola();
+    } catch {
+        alert('Error de conexión con el servidor');
+    }
+}
+
+// Paso 2 del flujo: cierra el trámite del paciente que está "admisionando".
+async function finalizarPaciente(id) {
+    try {
+        const resp = await fetch(`/api/admisiones/finalizar/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID }
+        });
+        if (resp.ok) { cerrarModal(); cargarCola(); return; }
+        const d = await resp.json().catch(() => ({}));
+        alert(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo finalizar la admisión'));
+        cargarCola();
+    } catch {
+        alert('Error de conexión con el servidor');
+    }
 }
 
 async function devolverPaciente(id) {
