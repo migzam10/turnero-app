@@ -206,6 +206,84 @@ router.get('/dashboard', async (req, res) => {
     }
 });
 
+// ── Datos para gráficas del Admin (una sola llamada) ──────────
+// Solo lectura, por fecha. Alimenta 3 gráficas: embudo del pipeline, flujo por hora
+// y barras por profesional. Respeta el parámetro `fecha` (histórico); no fuerza
+// CURRENT_DATE. Es adicional: no toca /dashboard ni /reporte-detallado.
+router.get('/graficas', async (req, res) => {
+    const fecha = req.query.fecha || fechaHoyBogota();
+    try {
+        // Embudo: semántica "alcanzó la etapa" (timestamps IS NOT NULL), NO snapshot.
+        // Se cuentan pacientes DISTINTOS en las etapas de profesional para que las
+        // etapas sean coherentes entre sí.
+        const embudoPromise = query(
+            `SELECT
+                (SELECT COUNT(*) FROM pacientes_cola WHERE fecha = $1)                       AS registrados,
+                (SELECT COUNT(*) FROM pacientes_cola
+                    WHERE fecha = $1 AND hora_admision IS NOT NULL)                          AS admisionados,
+                (SELECT COUNT(DISTINCT numero_identificacion) FROM asignaciones_profesionales
+                    WHERE fecha = $1 AND activo AND hora_llamado IS NOT NULL)                AS llamados,
+                (SELECT COUNT(DISTINCT numero_identificacion) FROM asignaciones_profesionales
+                    WHERE fecha = $1 AND activo AND hora_en_atencion IS NOT NULL)            AS en_atencion,
+                (SELECT COUNT(DISTINCT numero_identificacion) FROM asignaciones_profesionales
+                    WHERE fecha = $1 AND activo AND estado = 'finalizado'
+                      AND hora_finalizado IS NOT NULL)                                       AS finalizados`,
+            [fecha]
+        );
+
+        // Flujo horario: serie fija de 24 horas (0-23) sin huecos, vía generate_series
+        // LEFT JOIN a las agregaciones por hora de llegada y de atención.
+        const flujoPromise = query(
+            `SELECT h.hora,
+                    COALESCE(l.llegadas, 0)   AS llegadas,
+                    COALESCE(a.atenciones, 0) AS atenciones
+             FROM generate_series(0, 23) AS h(hora)
+             LEFT JOIN (
+                 SELECT EXTRACT(HOUR FROM hora_llegada)::int AS hora, COUNT(*) AS llegadas
+                 FROM pacientes_cola
+                 WHERE fecha = $1 AND hora_llegada IS NOT NULL
+                 GROUP BY 1
+             ) l ON l.hora = h.hora
+             LEFT JOIN (
+                 SELECT EXTRACT(HOUR FROM hora_en_atencion)::int AS hora, COUNT(*) AS atenciones
+                 FROM asignaciones_profesionales
+                 WHERE fecha = $1 AND activo AND hora_en_atencion IS NOT NULL
+                 GROUP BY 1
+             ) a ON a.hora = h.hora
+             ORDER BY h.hora`,
+            [fecha]
+        );
+
+        const porProfesionalPromise = query(
+            `SELECT
+                ap.nombre_profesional, ap.area,
+                COUNT(*) FILTER (WHERE ap.estado = 'finalizado' AND ap.activo)     AS finalizados,
+                ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
+                      FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
+                                                                                   AS avg_min_atencion
+             FROM asignaciones_profesionales ap
+             WHERE ap.fecha = $1
+             GROUP BY ap.nombre_profesional, ap.area
+             ORDER BY finalizados DESC`,
+            [fecha]
+        );
+
+        const [embudo, flujo, porProfesional] = await Promise.all([
+            embudoPromise, flujoPromise, porProfesionalPromise,
+        ]);
+
+        return res.json({
+            fecha,
+            embudo: embudo.rows[0],
+            flujo_horario: flujo.rows,
+            por_profesional: porProfesional.rows,
+        });
+    } catch (err) {
+        console.error('[admin/graficas]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // ── Lista de pacientes del día ────────────────────────────────
 
 router.get('/pacientes', async (req, res) => {
