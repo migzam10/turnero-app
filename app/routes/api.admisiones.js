@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
+const { emitUpdatePatients } = require('../sockets/notify');
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('admisiones').emit('admision:llamando', rows[0]);
         io.to('display').emit('admision:llamando', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -80,7 +81,7 @@ router.post('/admisionando/:id', validarTerminalId, async (req, res) => {
         // para quitar al paciente de la pantalla.
         io.to('admisiones').emit('admision:completada', rows[0]);
         io.to('display').emit('admision:completada', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -111,7 +112,7 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         io.to('admisiones').emit('admision:completada', rows[0]);
         io.to('recepcion').emit('admision:completada', rows[0]);
         io.to('display').emit('admision:completada', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -142,7 +143,7 @@ router.post('/devolver/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to('admisiones').emit('admision:devuelto', rows[0]);
         io.to('display').emit('admision:devuelto', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -232,7 +233,7 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         io.to(`profesional:${profesional}`).emit('asignacion:manual', rows[0]);
         io.to('display').emit('asignacion:manual', rows[0]);
-        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.status(201).json(rows[0]);
     } catch (err) {

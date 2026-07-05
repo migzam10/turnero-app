@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { pool, query } = require('../database/db');
 const { validarExtensionSecret } = require('../middleware/validar');
+const { emitUpdatePatients } = require('../sockets/notify');
 
 const router = Router();
 
@@ -206,12 +207,12 @@ router.post('/sync', async (req, res) => {
         }
     }
 
-    // PASO 5 — Reactividad: en cuanto entra un payload exitoso notificamos a los clientes
-    // para que recarguen sin intervención humana. UPDATE_PATIENTS es global (cualquier vista
-    // que renderice estos datos lo escucha); extension:sync se mantiene para el profesional.
+    // PASO 5 — Reactividad: en cuanto entra un payload exitoso notificamos a las vistas
+    // que renderizan el estado global (admin y profesional) para que recarguen sin
+    // intervención humana; extension:sync se mantiene para el profesional.
     const io = req.app.get('io');
     if (io) {
-        io.emit('UPDATE_PATIENTS', { loginName, resultados, ts: Date.now() });
+        emitUpdatePatients(io);
         if (resultados.nuevos > 0) {
             io.to(`profesional:${loginName}`).emit('extension:sync', { loginName, resultados });
         }

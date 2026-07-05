@@ -1,6 +1,7 @@
 const { Router } = require('express');
-const { query } = require('../database/db');
+const { pool, query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
+const { emitUpdatePatients } = require('../sockets/notify');
 
 const router = Router();
 
@@ -127,53 +128,94 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
     const { profesional, consultorio } = req.body;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
-        // Consultorio multipaciente (toma de muestras, laboratorio, psicología…):
-        // permite varios pacientes activos a la vez → se omite el guard de paciente
-        // activo. Si el nombre no está en el catálogo (texto legacy) queda false.
-        let esMultipaciente = false;
-        if (consultorio) {
-            const { rows: cons } = await query(
-                `SELECT multipaciente FROM consultorios WHERE nombre = $1 AND activo = true`,
-                [consultorio]
+        // Toda la decisión (multipaciente + UPDATE con guards + diagnóstico) se
+        // serializa con un advisory lock transaccional: bajo READ COMMITTED el
+        // NOT EXISTS embebido NO evita el write-skew (dos requests paralelos ven
+        // cada uno la otra fila aún 'pendiente'). El tráfico es bajísimo, así que
+        // un lock GLOBAL de la operación es correcto y elimina toda la sutileza.
+        const client = await pool.connect();
+        let fila = null, error409 = null;
+        try {
+            await client.query('BEGIN');
+            // El lock se libera solo al COMMIT/ROLLBACK. Tras adquirirlo, cada
+            // statement toma snapshot nuevo y ve lo ya commiteado por el ganador.
+            await client.query(`SELECT pg_advisory_xact_lock(hashtext('profesional:llamar'))`);
+
+            // (a) Consultorio multipaciente: permite varios pacientes activos a la
+            // vez → se omite el guard de paciente activo. Nombre fuera del catálogo
+            // (texto legacy) → false.
+            let esMultipaciente = false;
+            if (consultorio) {
+                const { rows: cons } = await client.query(
+                    `SELECT multipaciente FROM consultorios WHERE nombre = $1 AND activo = true`,
+                    [consultorio]
+                );
+                esMultipaciente = cons[0]?.multipaciente === true;
+            }
+
+            // (b) UPDATE atómico con los guards embebidos: solo transiciona si la
+            // fila sigue 'pendiente', el profesional no tiene otro paciente activo
+            // (salvo multipaciente, $3) y el paciente no está tomado por OTRO.
+            const { rows, rowCount } = await client.query(
+                `UPDATE asignaciones_profesionales ap
+                 SET estado = 'llamando', hora_llamado = NOW(),
+                     consultorio_profesional = $2, updated_at = NOW()
+                 WHERE ap.id = $1 AND ap.estado = 'pendiente'
+                   AND ($3::boolean OR NOT EXISTS (
+                       SELECT 1 FROM asignaciones_profesionales a2
+                       WHERE a2.nombre_profesional = $4 AND a2.fecha = CURRENT_DATE
+                         AND a2.activo = true AND a2.estado IN ('llamando','en_atencion')))
+                   AND NOT EXISTS (
+                       SELECT 1 FROM asignaciones_profesionales a3
+                       WHERE a3.numero_identificacion = ap.numero_identificacion
+                         AND a3.fecha = CURRENT_DATE AND a3.activo = true
+                         AND a3.nombre_profesional <> $4
+                         AND a3.estado IN ('llamando','en_atencion'))
+                 RETURNING *`,
+                [req.params.id, consultorio || null, esMultipaciente, profesional]
             );
-            esMultipaciente = cons[0]?.multipaciente === true;
+
+            // (c) rowCount 0: el UPDATE no aplicó por algún guard. Se diagnostica
+            // con los mismos SELECTs (ahora solo para elegir qué 409 devolver).
+            if (rowCount === 0) {
+                if (!esMultipaciente) {
+                    const { rows: activos } = await client.query(
+                        `SELECT 1 FROM asignaciones_profesionales
+                         WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
+                           AND activo = true
+                           AND estado IN ('llamando','en_atencion') LIMIT 1`,
+                        [profesional]
+                    );
+                    if (activos.length > 0) error409 = 'ya_tiene_paciente_activo';
+                }
+
+                if (!error409) {
+                    const { rows: bloqueado } = await client.query(
+                        `SELECT 1 FROM asignaciones_profesionales ap2
+                         WHERE ap2.numero_identificacion = (
+                             SELECT numero_identificacion FROM asignaciones_profesionales WHERE id = $1
+                         )
+                         AND ap2.fecha = CURRENT_DATE
+                         AND ap2.activo = true
+                         AND ap2.nombre_profesional <> $2
+                         AND ap2.estado IN ('llamando','en_atencion') LIMIT 1`,
+                        [req.params.id, profesional]
+                    );
+                    error409 = bloqueado.length > 0 ? 'paciente_bloqueado' : 'estado_invalido';
+                }
+            } else {
+                fila = rows[0];
+            }
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err; // lo captura el try/catch externo → 500 db_error
+        } finally {
+            client.release();
         }
 
-        // Bug #6: bloquear si el profesional ya tiene un paciente activo
-        if (!esMultipaciente) {
-            const { rows: activos } = await query(
-                `SELECT 1 FROM asignaciones_profesionales
-                 WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
-                   AND activo = true
-                   AND estado IN ('llamando','en_atencion') LIMIT 1`,
-                [profesional]
-            );
-            if (activos.length > 0) return res.status(409).json({ error: 'ya_tiene_paciente_activo' });
-        }
-
-        // Bug #7: bloquear si el paciente ya está siendo atendido por otro profesional
-        const { rows: bloqueado } = await query(
-            `SELECT 1 FROM asignaciones_profesionales ap2
-             WHERE ap2.numero_identificacion = (
-                 SELECT numero_identificacion FROM asignaciones_profesionales WHERE id = $1
-             )
-             AND ap2.fecha = CURRENT_DATE
-             AND ap2.activo = true
-             AND ap2.nombre_profesional <> $2
-             AND ap2.estado IN ('llamando','en_atencion') LIMIT 1`,
-            [req.params.id, profesional]
-        );
-        if (bloqueado.length > 0) return res.status(409).json({ error: 'paciente_bloqueado' });
-
-        const { rows, rowCount } = await query(
-            `UPDATE asignaciones_profesionales
-             SET estado = 'llamando', hora_llamado = NOW(),
-                 consultorio_profesional = $2, updated_at = NOW()
-             WHERE id = $1 AND estado = 'pendiente'
-             RETURNING *`,
-            [req.params.id, consultorio || null]
-        );
-        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+        if (error409) return res.status(409).json({ error: error409 });
 
         // Obtener nombre del paciente para el display
         const { rows: conNombre } = await query(
@@ -184,12 +226,12 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
             [req.params.id]
         );
 
-        const payload = { ...rows[0], nombre_paciente: conNombre[0]?.nombre_paciente, consultorio };
+        const payload = { ...fila, nombre_paciente: conNombre[0]?.nombre_paciente, consultorio };
 
         const io = req.app.get('io');
         io.to(`profesional:${profesional}`).emit('asignacion:llamando', payload);
         io.to('display').emit('asignacion:llamando', payload);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(payload);
     } catch (err) {
@@ -225,7 +267,7 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:en_atencion', payload);
         io.to('display').emit('asignacion:en_atencion', payload);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(payload);
     } catch (err) {
@@ -250,7 +292,7 @@ router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:cancelado', rows[0]);
         io.to('display').emit('asignacion:cancelado', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -275,7 +317,7 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:finalizado', rows[0]);
         io.to('display').emit('asignacion:finalizado', rows[0]);
-        if (io) io.to('admin').emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -310,7 +352,7 @@ router.post('/reasignar/:id', validarTerminalId, async (req, res) => {
         io.to(`profesional:${viejo}`).emit('asignacion:reasignado', rows[0]);
         io.to(`profesional:${nuevo}`).emit('asignacion:reasignado', rows[0]);
         io.to('display').emit('asignacion:reasignado', rows[0]);
-        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {
@@ -343,7 +385,7 @@ router.post('/cancelar-asignacion/:id', validarTerminalId, async (req, res) => {
         const prof = profesional || rows[0].nombre_profesional;
         io.to(`profesional:${prof}`).emit('asignacion:cancelado_manual', rows[0]);
         io.to('display').emit('asignacion:cancelado_manual', rows[0]);
-        io.emit('UPDATE_PATIENTS', { ts: Date.now() });
+        emitUpdatePatients(io);
 
         return res.json(rows[0]);
     } catch (err) {

@@ -1,5 +1,9 @@
 const { query } = require('../database/db');
 
+// Validación de UUID (misma regex que usan los frontends). El id de terminal es
+// la PK de `terminales`: un valor no-UUID reventaría el INSERT en cada conexión.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function registrarEventosSocket(io) {
     io.on('connection', (socket) => {
         console.log(`[WS] Conectado: ${socket.id}`);
@@ -16,7 +20,9 @@ function registrarEventosSocket(io) {
             socket.data.profesional = profesional;
             socket.data.terminalId = terminalId;
 
-            if (terminalId) {
+            // Solo se persiste si el terminalId es un UUID válido; con salas se
+            // hace el join igualmente (arriba), pero no se toca la BD si es basura.
+            if (terminalId && UUID_RE.test(terminalId)) {
                 try {
                     await query(
                         `INSERT INTO terminales (id, tipo, login_name_biofile, consultorio_numero, audio_ok, ultimo_heartbeat)
@@ -36,7 +42,7 @@ function registrarEventosSocket(io) {
         });
 
         socket.on('heartbeat', async ({ terminalId, audioOk }) => {
-            if (!terminalId) return;
+            if (!terminalId || !UUID_RE.test(terminalId)) return;
             try {
                 // COALESCE conserva el valor previo si el heartbeat no reporta audio.
                 await query(

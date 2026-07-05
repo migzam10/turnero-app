@@ -202,3 +202,8 @@ ALTER TABLE terminales
 -- desbloqueado (política de autoplay). NULL = terminal que no reporta audio.
 ALTER TABLE terminales
     ADD COLUMN IF NOT EXISTS audio_ok BOOLEAN;
+
+-- El panel Admin también se registra como terminal (monitoreo unificado).
+ALTER TABLE terminales DROP CONSTRAINT IF EXISTS terminales_tipo_check;
+ALTER TABLE terminales ADD CONSTRAINT terminales_tipo_check
+    CHECK (tipo IN ('recepcion','admisiones','profesional','display','admin'));
