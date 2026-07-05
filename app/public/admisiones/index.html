@@ -207,6 +207,13 @@ const TERMINAL_ID = (() => {
 let moduloActual = localStorage.getItem('modulo_admisiones') || '';
 let pacienteModalData = null;
 let colaActual = [];
+
+// Escapa texto dinámico antes de interpolarlo en un template que va a innerHTML.
+function esc(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 // Bloqueo de concurrencia: true mientras hay un "Llamar" en vuelo, para que el
 // operador no pueda lanzar dos llamados simultáneos antes de la respuesta.
 let llamadoEnCurso = false;
@@ -245,7 +252,7 @@ async function cargarModulos() {
         const resp = await fetch('/api/admisiones/config-modulos');
         const modulos = await resp.json();
         const sel = document.getElementById('select-modulo');
-        sel.innerHTML = modulos.map(m => `<option value="${m}">${m}</option>`).join('');
+        sel.innerHTML = modulos.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
         if (moduloActual) sel.value = moduloActual;
     } catch {
         document.getElementById('select-modulo').innerHTML = '<option value="Módulo 1">Módulo 1</option><option value="Módulo 2">Módulo 2</option><option value="Módulo 3">Módulo 3</option>';
@@ -341,10 +348,10 @@ function renderCola() {
 
         return `<div class="pac-card${activo ? ' activo' : ''}">
             <div class="pac-top">
-                <div class="pri-dot pri-${p.prioridad}"></div>
+                <div class="pri-dot pri-${esc(p.prioridad)}"></div>
                 <div class="pac-info">
-                    <div class="pac-nombre">${p.nombre_completo}</div>
-                    <div class="pac-sub">${p.numero_identificacion} · ${hora}</div>
+                    <div class="pac-nombre">${esc(p.nombre_completo)}</div>
+                    <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}</div>
                 </div>
             </div>
             <div class="pac-btns">${botones}</div>
@@ -444,13 +451,13 @@ async function verPaciente(id) {
     const horaLlegada = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
 
     document.getElementById('modal-datos-grid').innerHTML = `
-        <div class="dato-item"><div class="dato-label">Cédula</div><div class="dato-val">${p.numero_identificacion}</div></div>
-        <div class="dato-item"><div class="dato-label">Tipo</div><div class="dato-val">${p.tipo_identificacion || 'CC'}</div></div>
-        <div class="dato-item full"><div class="dato-label">Nombre completo</div><div class="dato-val">${p.nombre_completo}</div></div>
+        <div class="dato-item"><div class="dato-label">Cédula</div><div class="dato-val">${esc(p.numero_identificacion)}</div></div>
+        <div class="dato-item"><div class="dato-label">Tipo</div><div class="dato-val">${esc(p.tipo_identificacion || 'CC')}</div></div>
+        <div class="dato-item full"><div class="dato-label">Nombre completo</div><div class="dato-val">${esc(p.nombre_completo)}</div></div>
         <div class="dato-item"><div class="dato-label">Fecha nacimiento</div><div class="dato-val">${fechaNac}</div></div>
-        <div class="dato-item"><div class="dato-label">Ciudad expedición</div><div class="dato-val">${p.ciudad_expedicion || '—'}</div></div>
+        <div class="dato-item"><div class="dato-label">Ciudad expedición</div><div class="dato-val">${esc(p.ciudad_expedicion || '—')}</div></div>
         <div class="dato-item"><div class="dato-label">Hora llegada</div><div class="dato-val">${horaLlegada}</div></div>
-        <div class="dato-item"><div class="dato-label">Estado</div><div class="dato-val">${p.estado_admision}</div></div>
+        <div class="dato-item"><div class="dato-label">Estado</div><div class="dato-val">${esc(p.estado_admision)}</div></div>
     `;
 
     // Prioridad
@@ -530,12 +537,20 @@ function buscarProfesionalAsig(texto) {
     }
     const filtrados = catalogoProfesionales.filter(n => n.toUpperCase().includes(q));
     if (filtrados.length) {
-        lista.innerHTML = filtrados.map(n => `<li onclick="seleccionarProfAsig('${n.replace(/'/g, "\\'")}')">${n}</li>`).join('');
+        // El nombre va como data-nombre (escapado); un listener delegado lo lee del
+        // dataset, así apóstrofes/HTML en el nombre no rompen el handler ni inyectan.
+        lista.innerHTML = filtrados.map(n => `<li data-nombre="${esc(n)}">${esc(n)}</li>`).join('');
         lista.classList.add('visible');
     } else {
         lista.classList.remove('visible');
     }
 }
+
+// Delegación: un solo listener en el <ul> resuelve el <li> pulsado por su data-nombre.
+document.getElementById('asig-sugerencias').addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-nombre]');
+    if (li) seleccionarProfAsig(li.dataset.nombre);
+});
 
 function seleccionarProfAsig(nombre) {
     document.getElementById('asig-input-prof').value = nombre;

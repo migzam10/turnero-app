@@ -46,8 +46,13 @@ app.use('/api/config',      require('./routes/api.config'));
 app.use('/api/display',     require('./routes/api.display'));
 
 // Ruta de salud
-app.get('/health', (req, res) => {
-    res.json({ ok: true, ts: new Date().toISOString(), env: process.env.NODE_ENV });
+app.get('/health', async (req, res) => {
+    try {
+        await require('./database/db').query('SELECT 1');
+        res.json({ ok: true, db: true, ts: new Date().toISOString(), env: process.env.NODE_ENV });
+    } catch {
+        res.status(503).json({ ok: false, db: false, ts: new Date().toISOString() });
+    }
 });
 
 // Socket.io

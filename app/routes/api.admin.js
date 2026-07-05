@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { query } = require('../database/db');
-const { crearToken, validarAdminToken } = require('../middleware/adminAuth');
+const { crearToken, validarAdminToken,
+        loginBloqueado, registrarIntentoFallido, limpiarIntentos } = require('../middleware/adminAuth');
 const { fechaHoyBogota } = require('../utils/fecha');
 
 const router = Router();
@@ -15,6 +16,10 @@ const CLAVES_SENSIBLES = new Set(['clave_admin']);
 // token de sesión que el cliente debe enviar en el header Authorization.
 // (Ruta pública: se define ANTES del middleware de protección.)
 router.post('/login', async (req, res) => {
+    const ip = req.ip;
+    // Rate-limit: si la IP ya agotó los intentos, se rechaza sin tocar la BD.
+    if (loginBloqueado(ip)) return res.status(429).json({ error: 'demasiados_intentos' });
+
     const { clave } = req.body || {};
     if (!clave) return res.status(400).json({ error: 'clave_requerida' });
     try {
@@ -23,8 +28,10 @@ router.post('/login', async (req, res) => {
         );
         const claveValida = rows[0]?.valor || '2026';
         if (String(clave) === String(claveValida)) {
+            limpiarIntentos(ip);
             return res.json({ ok: true, token: crearToken() });
         }
+        registrarIntentoFallido(ip);
         return res.status(401).json({ error: 'clave_incorrecta' });
     } catch (err) {
         console.error('[admin/login]', err);

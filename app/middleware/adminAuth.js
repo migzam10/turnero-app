@@ -38,12 +38,51 @@ function validarAdminToken(req, res, next) {
     next();
 }
 
-// Limpieza periódica de tokens expirados (no mantiene vivo el proceso).
+// ── Rate-limit del login admin (en memoria, sin dependencias) ─────────────────
+// Frena la fuerza bruta: ≥MAX_FALLOS intentos fallidos desde una misma IP dentro
+// de una ventana de VENTANA_MS la bloquean hasta que la ventana venza.
+const MAX_FALLOS = 5;
+const VENTANA_MS = 15 * 60 * 1000;          // 15 minutos
+const intentos = new Map();                  // ip -> { fallos, ventanaInicio }
+
+function loginBloqueado(ip) {
+    const reg = intentos.get(ip);
+    if (!reg) return false;
+    // Limpieza perezosa: si la ventana venció, se resetea al consultar.
+    if (Date.now() - reg.ventanaInicio > VENTANA_MS) {
+        intentos.delete(ip);
+        return false;
+    }
+    return reg.fallos >= MAX_FALLOS;
+}
+
+function registrarIntentoFallido(ip) {
+    const ahora = Date.now();
+    const reg = intentos.get(ip);
+    if (!reg || ahora - reg.ventanaInicio > VENTANA_MS) {
+        intentos.set(ip, { fallos: 1, ventanaInicio: ahora });
+    } else {
+        reg.fallos++;
+    }
+}
+
+function limpiarIntentos(ip) {
+    intentos.delete(ip);
+}
+
+// Limpieza periódica de tokens expirados y ventanas de intentos vencidas
+// (no mantiene vivo el proceso).
 setInterval(() => {
     const ahora = Date.now();
     for (const [t, exp] of tokens) {
         if (ahora > exp) tokens.delete(t);
     }
+    for (const [ip, reg] of intentos) {
+        if (ahora - reg.ventanaInicio > VENTANA_MS) intentos.delete(ip);
+    }
 }, 60 * 60 * 1000).unref();
 
-module.exports = { crearToken, tokenValido, validarAdminToken };
+module.exports = {
+    crearToken, tokenValido, validarAdminToken,
+    loginBloqueado, registrarIntentoFallido, limpiarIntentos
+};

@@ -226,13 +226,21 @@ async function buscarProfesional(texto) {
         const todos = await resp.json();
         const filtrados = todos.filter(n => n.toUpperCase().includes(texto.trim().toUpperCase()));
         if (filtrados.length) {
-            lista.innerHTML = filtrados.map(n => `<li onclick="seleccionarProf('${n}')">${n}</li>`).join('');
+            // El nombre va como data-nombre (escapado); un listener delegado lo lee del
+            // dataset, así apóstrofes/HTML en el nombre no rompen el handler ni inyectan.
+            lista.innerHTML = filtrados.map(n => `<li data-nombre="${esc(n)}">${esc(n)}</li>`).join('');
             lista.classList.add('visible');
         } else {
             lista.classList.remove('visible');
         }
     } catch {}
 }
+
+// Delegación: un solo listener en el <ul> resuelve el <li> pulsado por su data-nombre.
+document.getElementById('sugerencias').addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-nombre]');
+    if (li) seleccionarProf(li.dataset.nombre);
+});
 
 function seleccionarProf(nombre) {
     document.getElementById('input-profesional').value = nombre;
@@ -468,7 +476,7 @@ function renderCard(a) {
 
     let bloqueoBanner = '';
     if (a.bloqueado && a.estado === 'pendiente') {
-        bloqueoBanner = `<div class="bloqueo-aviso">En atención con ${a.bloqueado_por || 'otro profesional'}</div>`;
+        bloqueoBanner = `<div class="bloqueo-aviso">En atención con ${esc(a.bloqueado_por || 'otro profesional')}</div>`;
     }
 
     // Gestión manual (cancelar/reasignar) solo se ofrece en 'pendiente' y no bloqueadas,
@@ -496,13 +504,13 @@ function renderCard(a) {
     return `<div class="pac-card estado-${a.estado}${a.bloqueado && a.estado === 'pendiente' ? ' bloqueado' : ''}">
         <div class="pac-top">
             <span class="pri-badge pri-${a.prioridad || 'normal'}">${(a.prioridad || 'normal').toUpperCase()}</span>
-            <span class="pac-nombre">${nombreStr}</span>
-            <span class="pac-area">${a.area || ''}</span>
+            <span class="pac-nombre">${esc(nombreStr)}</span>
+            <span class="pac-area">${esc(a.area || '')}</span>
             ${estadoBadge}
             ${timerStr}
         </div>
         <div class="pac-meta">
-            <span>CC ${a.numero_identificacion}</span>
+            <span>CC ${esc(a.numero_identificacion)}</span>
             ${tiempoLlegadaFisica ? `<span>Llegó: ${tiempoLlegadaFisica}</span>` : ''}
             ${tiempoAdmisionBiofile ? `<span>Admisionado: ${tiempoAdmisionBiofile}</span>` : ''}
             ${tiempoFinalizado ? `<span>Finalizado: ${tiempoFinalizado}</span>` : ''}
