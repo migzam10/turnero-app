@@ -275,6 +275,17 @@ const prioridadActual = 'normal';
 let pacienteModalId = null;
 // Id del paciente en edición. null = el formulario registra (INSERT); con valor = actualiza (UPDATE).
 let editandoId = null;
+// Cache en memoria de la cola actual, para resolver nombre/prioridad por id sin
+// interpolar texto libre del paciente dentro de atributos onclick (evita romper el
+// handler y XSS con apóstrofes/HTML en el nombre).
+let colaCache = [];
+
+// Escapa texto dinámico antes de interpolarlo en un template que va a innerHTML.
+function esc(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 // ── Escáner ─────────────────────────────────────────────────────
 const scanInput = document.getElementById('scan-input');
@@ -654,6 +665,7 @@ async function cargarCola() {
 
 function renderCola(lista) {
     const contenedor = document.getElementById('cola-lista');
+    colaCache = Array.isArray(lista) ? lista : [];
     document.getElementById('cola-count').textContent = lista.length;
 
     if (!lista.length) {
@@ -676,21 +688,25 @@ function renderCola(lista) {
             ? `<button class="btn-edit-pac" onclick="event.stopPropagation(); editarPaciente('${p.id}')">Editar</button>`
             : '';
 
-        return `<div class="cola-item" onclick="abrirModalPrioridad('${p.id}', '${p.nombre_completo}', '${p.prioridad}')">
-            <span class="badge-pri pri-${p.prioridad}">${p.prioridad.toUpperCase()}</span>
-            <span class="cola-nombre">${p.nombre_completo}</span>
-            <span class="cola-estado estado-${p.estado_admision}">${estadoLabel} ${hora}</span>
+        return `<div class="cola-item" onclick="abrirModalPrioridad('${p.id}')">
+            <span class="badge-pri pri-${esc(p.prioridad)}">${esc(String(p.prioridad || '').toUpperCase())}</span>
+            <span class="cola-nombre">${esc(p.nombre_completo)}</span>
+            <span class="cola-estado estado-${esc(p.estado_admision)}">${esc(estadoLabel)} ${hora}</span>
             ${btnEditar}
         </div>`;
     }).join('');
 }
 
 // ── Modal prioridad ─────────────────────────────────────────────
-function abrirModalPrioridad(id, nombre, prioridadActualPac) {
+function abrirModalPrioridad(id) {
+    // El nombre y la prioridad se resuelven del cache por id (no se arrastran en el
+    // onclick), así el nombre puede contener apóstrofes o HTML sin romper nada.
+    const p = colaCache.find(x => String(x.id) === String(id));
+    if (!p) return;
     pacienteModalId = id;
-    document.getElementById('modal-nombre-pac').textContent = nombre;
+    document.getElementById('modal-nombre-pac').textContent = p.nombre_completo || '';
     document.querySelectorAll('.modal .prioridad-btn').forEach(b => {
-        b.classList.toggle('activo', b.dataset.val === prioridadActualPac);
+        b.classList.toggle('activo', b.dataset.val === p.prioridad);
     });
     document.getElementById('modal-prioridad').classList.add('visible');
 }

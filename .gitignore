@@ -21,3 +21,6 @@ DOM/
 
 # Script personal de despliegue (IP/usuario interno, rutas locales) — no va al repo
 sincronizar.sh
+
+# Backups de la BD generados por scripts/backup-db.sh
+backups/

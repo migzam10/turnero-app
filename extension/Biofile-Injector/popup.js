@@ -20,7 +20,10 @@ async function cargarPacientes() {
     try {
         const resp = await fetch(URL_TURNERO, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' },
+            headers: {
+                'Accept': 'application/json',
+                'X-Extension-Secret': CONFIG.EXTENSION_SECRET
+            },
             cache: 'no-store' // Evita lectura de caché corrupta
         });
         

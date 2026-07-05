@@ -4,7 +4,10 @@ const { validarExtensionSecret } = require('../middleware/validar');
 
 const router = Router();
 
-// GET /api/extension/pendientes — sin auth para que el popup la consuma directo
+router.use(validarExtensionSecret);
+
+// GET /api/extension/pendientes — protegido: el popup de la extensión debe enviar
+// el header X-Extension-Secret (expone cédulas, nombres y fechas de nacimiento).
 router.get('/pendientes', async (req, res) => {
     try {
         const { rows } = await query(
@@ -28,8 +31,6 @@ router.get('/pendientes', async (req, res) => {
         return res.status(500).json({ error: 'db_error' });
     }
 });
-
-router.use(validarExtensionSecret);
 
 // Valida que la fecha sea un día calendario real en formato YYYY-MM-DD.
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
