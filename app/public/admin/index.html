@@ -142,6 +142,7 @@ tr:hover td { background: #f8fafc; }
     <div class="tab" data-tab="pacientes" onclick="mostrarTab('pacientes')">Pacientes</div>
     <div class="tab" data-tab="reportes" onclick="mostrarTab('reportes')">Reportes</div>
     <div class="tab" data-tab="graficas" onclick="mostrarTab('graficas')">Gráficas</div>
+    <div class="tab" data-tab="eventos" onclick="mostrarTab('eventos')">Eventos</div>
     <div class="tab" data-tab="configuracion" onclick="mostrarTab('configuracion')">Configuración</div>
     <div class="tab" data-tab="terminales" onclick="mostrarTab('terminales')">Terminales</div>
 </div>
@@ -226,6 +227,26 @@ tr:hover td { background: #f8fafc; }
         <div class="seccion">
             <div class="seccion-header"><span class="seccion-titulo">Finalizados por profesional</span></div>
             <div style="padding:16px;position:relative;height:360px"><canvas id="chart-profesional"></canvas></div>
+        </div>
+    </div>
+
+    <!-- ─────────── EVENTOS (auditoría) ─────────── -->
+    <div class="panel" id="panel-eventos">
+        <div class="fecha-row">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
+            <input type="date" id="eventos-fecha">
+            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Tipo:</label>
+            <select id="eventos-tipo" onchange="renderEventos()"><option value="">Todos</option></select>
+            <button class="btn-buscar" onclick="cargarEventos()">Actualizar</button>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Registro de eventos</span></div>
+            <div class="tabla-wrapper">
+                <table>
+                    <thead><tr><th>Hora</th><th>Tipo</th><th>Descripción</th></tr></thead>
+                    <tbody id="tbody-eventos"><tr><td colspan="3" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -451,6 +472,7 @@ function mostrarTab(nombre) {
 
     if (nombre === 'dashboard') cargarDashboard();
     if (nombre === 'graficas') cargarGraficas();
+    if (nombre === 'eventos') cargarEventos();
     // Consultorios vive ahora dentro de Configuración.
     if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarConsultorios(); }
 
@@ -503,7 +525,8 @@ async function cargarDashboard() {
             <div class="kpi-card kpi-rojo"><div class="kpi-num">${c.prioridad_alta||0}</div><div class="kpi-label">Prioridad alta</div></div>
             <div class="kpi-card kpi-azul"><div class="kpi-num">${a.en_atencion||0}</div><div class="kpi-label">En atención</div></div>
             <div class="kpi-card kpi-verde"><div class="kpi-num">${a.finalizados||0}</div><div class="kpi-label">Finalizados</div></div>
-            <div class="kpi-card kpi-gris"><div class="kpi-num">${c.avg_min_espera_admision||'—'}</div><div class="kpi-label">Min. espera prom.</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${c.avg_min_espera_admision||'—'}</div><div class="kpi-label">Espera admisión (min)</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${c.avg_min_registro||'—'}</div><div class="kpi-label">Registro Biofile (min)</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${a.profesionales_activos||0}</div><div class="kpi-label">Profesionales activos</div></div>
             <div class="kpi-card kpi-naranja"><div class="kpi-num">${a.particulares??0}</div><div class="kpi-label">Particulares</div></div>
             <div class="kpi-card kpi-rojo"><div class="kpi-num">${Number(a.cancelados_lis??0)+Number(a.cancelados_manual??0)}</div><div class="kpi-label">Bajas hoy</div></div>
@@ -671,7 +694,8 @@ function renderReporteDetallado(data) {
         <div class="kpi-grid" style="margin-bottom:16px">
             <div class="kpi-card kpi-azul"><div class="kpi-num">${k.total_pacientes||0}</div><div class="kpi-label">Total pacientes</div></div>
             <div class="kpi-card kpi-verde"><div class="kpi-num">${k.admisionados||0}</div><div class="kpi-label">Admisionados</div></div>
-            <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_espera_admision||'—'}</div><div class="kpi-label">Min. espera admisión</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_espera_admision||'—'}</div><div class="kpi-label">Espera admisión (min)</div></div>
+            <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_registro||'—'}</div><div class="kpi-label">Registro (min)</div></div>
             <div class="kpi-card kpi-gris"><div class="kpi-num">${k.avg_tiempo_atencion_general||'—'}</div><div class="kpi-label">Min. prom. atención</div></div>
             <div class="kpi-card kpi-naranja"><div class="kpi-num">${k.particulares??0}</div><div class="kpi-label">Particulares</div></div>
             <div class="kpi-card kpi-rojo"><div class="kpi-num">${k.bajas_lis??0} / ${k.bajas_manual??0}</div><div class="kpi-label">Bajas (LIS/Manual)</div></div>
@@ -693,15 +717,16 @@ function renderReporteDetallado(data) {
         <div class="seccion" style="margin-bottom:16px">
             <div class="seccion-header"><span class="seccion-titulo">Timeline T1T5 por paciente</span></div>
             <div class="tabla-wrapper"><table>
-                <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Min. espera</th><th>Min. total</th></tr></thead>
+                <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Espera adm.</th><th>Registro</th><th>Min. total</th></tr></thead>
                 <tbody>${(data.timeline||[]).map(p => `
                     <tr><td>${esc(p.cedula)}</td><td>${esc(p.paciente)}</td>
                     <td>${horaFmt(p.t1_llegada)}</td><td>${horaFmt(p.t2_sistema)}</td>
                     <td>${horaFmt(p.t3_primer_llamado)}</td><td>${horaFmt(p.t4_primera_atencion)}</td>
                     <td>${horaFmt(p.t5_ultima_finalizacion)}</td>
                     <td>${p.min_espera_admision ? p.min_espera_admision + ' min' : '—'}</td>
+                    <td>${p.min_registro ? p.min_registro + ' min' : '—'}</td>
                     <td>${p.min_tiempo_total_clinica ? p.min_tiempo_total_clinica + ' min' : '—'}</td></tr>
-                `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                `).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
             </table></div>
         </div>
         <div class="seccion">
@@ -736,15 +761,16 @@ function renderReporteRango(data) {
     return `<div class="seccion">
         <div class="seccion-header"><span class="seccion-titulo">Resumen por profesional — ${data.desde} al ${data.hasta}</span></div>
         <div class="tabla-wrapper"><table>
-            <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Cancelados</th><th>Particulares</th><th>Prom. atención</th><th>Espera prom.</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Profesional</th><th>Área</th><th>Atendidos</th><th>Cancelados</th><th>Particulares</th><th>Prom. atención</th><th>Espera adm.</th><th>Registro</th></tr></thead>
             <tbody>${(data.datos||[]).map(r => `
                 <tr><td>${esc(r.fecha)}</td><td>${esc(r.nombre_profesional)}</td><td>${esc(r.area)}</td>
                 <td>${r.pacientes_atendidos||0}</td>
                 <td>${r.cancelados??0}</td>
                 <td>${r.particulares??0}</td>
                 <td>${r.avg_min_atencion ? r.avg_min_atencion + ' min' : '—'}</td>
-                <td>${r.avg_espera_admision ? r.avg_espera_admision + ' min' : '—'}</td></tr>
-            `).join('')||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                <td>${r.avg_espera_admision ? r.avg_espera_admision + ' min' : '—'}</td>
+                <td>${r.avg_registro ? r.avg_registro + ' min' : '—'}</td></tr>
+            `).join('')||'<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
         </table></div>
     </div>`;
 }
@@ -756,11 +782,11 @@ function exportarCSVReporte() {
         filas = [['Cedula','Paciente','Profesional','Area','Estado','Origen','Origen.Baja','Admisionado','Hora.Llamado','Hora.Finalizado','Min.Atencion']];
         (dataReporte.asignaciones||[]).forEach(a => filas.push([a.cedula,a.nombre,a.nombre_profesional,a.area,a.estado,a.origen||'',a.origen_baja||'',horaFmt(a.hora_admisionado),horaFmt(a.hora_llamado),horaFmt(a.hora_finalizado),a.min_atencion||'']));
     } else if (dataReporte.timeline) {
-        filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Min.Espera','Min.Total']];
-        (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_tiempo_total_clinica||'']));
+        filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Espera.Adm','Registro','Min.Total']];
+        (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_registro||'',p.min_tiempo_total_clinica||'']));
     } else {
-        filas = [['Fecha','Profesional','Area','Atendidos','Cancelados','Particulares','Prom.Atencion','Espera.Prom']];
-        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.cancelados??0,r.particulares??0,r.avg_min_atencion||'',r.avg_espera_admision||'']));
+        filas = [['Fecha','Profesional','Area','Atendidos','Cancelados','Particulares','Prom.Atencion','Espera.Adm','Registro']];
+        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.cancelados??0,r.particulares??0,r.avg_min_atencion||'',r.avg_espera_admision||'',r.avg_registro||'']));
     }
     descargarCSV(filas, `reporte_${document.getElementById('rep-desde').value}_${document.getElementById('rep-hasta').value}.csv`);
 }
@@ -1243,6 +1269,56 @@ async function cargarPantallas() {
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gris)">No se pudieron cargar las pantallas.</td></tr>';
         }
     }
+}
+
+// ── Eventos (visor de auditoría) ──────────────────────────────
+// Cache de la última respuesta; el filtro por tipo es client-side (el endpoint no filtra).
+let eventosCache = [];
+
+async function cargarEventos() {
+    const fechaEl = document.getElementById('eventos-fecha');
+    if (!fechaEl.value) fechaEl.value = fechaHoy();
+    const tbody = document.getElementById('tbody-eventos');
+    try {
+        const resp = await fetchAdmin(`/api/admin/eventos-log?fecha=${fechaEl.value}&limite=200`);
+        const data = await resp.json();
+        eventosCache = Array.isArray(data) ? data : [];
+        poblarTiposEventos();
+        renderEventos();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--gris)">No se pudieron cargar los eventos.</td></tr>';
+        }
+    }
+}
+
+// Puebla el select de tipos con los distintos valores presentes en la respuesta,
+// conservando la selección actual si sigue existiendo.
+function poblarTiposEventos() {
+    const sel = document.getElementById('eventos-tipo');
+    const prev = sel.value;
+    const tipos = [...new Set(eventosCache.map(e => e.tipo).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Todos</option>' + tipos.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    if (tipos.includes(prev)) sel.value = prev;
+}
+
+function renderEventos() {
+    const tbody = document.getElementById('tbody-eventos');
+    const tipoSel = document.getElementById('eventos-tipo').value;
+    const filas = tipoSel ? eventosCache.filter(e => e.tipo === tipoSel) : eventosCache;
+    if (!filas.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--gris)">Sin eventos para esta fecha.</td></tr>';
+        return;
+    }
+    // El orden llega descendente desde el backend; se respeta tal cual.
+    tbody.innerHTML = filas.map(e => {
+        const hora = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+        return `<tr>
+            <td style="font-variant-numeric:tabular-nums">${hora}</td>
+            <td><span class="badge b-normal">${esc(e.tipo)}</span></td>
+            <td>${esc(e.descripcion)}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Helpers ───────────────────────────────────────────────────

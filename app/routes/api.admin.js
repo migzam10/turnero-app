@@ -3,6 +3,7 @@ const { query } = require('../database/db');
 const { crearToken, validarAdminToken,
         loginBloqueado, registrarIntentoFallido, limpiarIntentos } = require('../middleware/adminAuth');
 const { fechaHoyBogota } = require('../utils/fecha');
+const { registrarEvento } = require('../utils/audit');
 
 const router = Router();
 
@@ -18,7 +19,10 @@ const CLAVES_SENSIBLES = new Set(['clave_admin']);
 router.post('/login', async (req, res) => {
     const ip = req.ip;
     // Rate-limit: si la IP ya agotó los intentos, se rechaza sin tocar la BD.
-    if (loginBloqueado(ip)) return res.status(429).json({ error: 'demasiados_intentos' });
+    if (loginBloqueado(ip)) {
+        registrarEvento({ tipo: 'admin_login_bloqueado', descripcion: 'Login admin bloqueado por intentos', datos: { ip } });
+        return res.status(429).json({ error: 'demasiados_intentos' });
+    }
 
     const { clave } = req.body || {};
     if (!clave) return res.status(400).json({ error: 'clave_requerida' });
@@ -29,6 +33,7 @@ router.post('/login', async (req, res) => {
         const claveValida = rows[0]?.valor || '2026';
         if (String(clave) === String(claveValida)) {
             limpiarIntentos(ip);
+            registrarEvento({ tipo: 'admin_login', descripcion: 'Login admin OK', datos: { ip } });
             return res.json({ ok: true, token: crearToken() });
         }
         registrarIntentoFallido(ip);
@@ -78,6 +83,8 @@ router.post('/config', async (req, res) => {
         // Notifica a todas las pantallas para que recarguen branding/parámetros en vivo.
         // Se envía solo la clave (sin el valor) para no difundir payloads grandes (logo).
         req.app.get('io').emit('config:actualizada', { clave });
+        // No se registra el valor (puede ser sensible, p.ej. clave_admin): solo la clave.
+        registrarEvento({ tipo: 'config_cambiada', descripcion: `Config '${clave}' actualizada`, datos: { clave } });
         return res.json({ ok: true });
     } catch (err) {
         return res.status(500).json({ error: 'db_error' });
@@ -211,8 +218,10 @@ router.get('/resumen-dia', async (req, res) => {
                 COUNT(*) FILTER (WHERE estado_admision = 'esperando')          AS en_espera,
                 COUNT(*) FILTER (WHERE estado_admision = 'llamando_admision')  AS siendo_llamados,
                 COUNT(*) FILTER (WHERE prioridad = 'alta')                     AS prioridad_alta,
-                ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llegada))/60)
-                      FILTER (WHERE hora_admision IS NOT NULL))                AS avg_min_espera_admision
+                ROUND(AVG(EXTRACT(EPOCH FROM (hora_llamado_admision - hora_llegada))/60)
+                      FILTER (WHERE hora_llamado_admision IS NOT NULL))        AS avg_min_espera_admision,
+                ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llamado_admision))/60)
+                      FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL)) AS avg_min_registro
              FROM pacientes_cola WHERE fecha = $1`,
             [fecha]
         );
@@ -252,8 +261,10 @@ router.get('/dashboard', async (req, res) => {
                     COUNT(*) FILTER (WHERE estado_admision = 'esperando')          AS en_espera,
                     COUNT(*) FILTER (WHERE estado_admision = 'llamando_admision')  AS siendo_llamados,
                     COUNT(*) FILTER (WHERE prioridad = 'alta')                     AS prioridad_alta,
-                    ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llegada))/60)
-                          FILTER (WHERE hora_admision IS NOT NULL))                AS avg_min_espera_admision
+                    ROUND(AVG(EXTRACT(EPOCH FROM (hora_llamado_admision - hora_llegada))/60)
+                          FILTER (WHERE hora_llamado_admision IS NOT NULL))        AS avg_min_espera_admision,
+                    ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llamado_admision))/60)
+                          FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL)) AS avg_min_registro
                  FROM pacientes_cola WHERE fecha = $1`,
                 [fecha]
             ),
@@ -446,12 +457,15 @@ router.get('/reporte-detallado', async (req, res) => {
                 pc.primer_nombre || ' ' || pc.primer_apellido AS paciente,
                 pc.prioridad,
                 pc.hora_llegada                                               AS t1_llegada,
+                pc.hora_llamado_admision                                      AS t2a_admisionando,
                 pc.hora_admision                                              AS t2_sistema,
                 MIN(ap.hora_llamado) FILTER (WHERE ap.activo)                 AS t3_primer_llamado,
                 MIN(ap.hora_en_atencion) FILTER (WHERE ap.activo)             AS t4_primera_atencion,
                 MAX(ap.hora_finalizado) FILTER (WHERE ap.activo)              AS t5_ultima_finalizacion,
-                ROUND(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
+                ROUND(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
                                                                               AS min_espera_admision,
+                ROUND(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
+                                                                              AS min_registro,
                 ROUND(EXTRACT(EPOCH FROM (MIN(ap.hora_llamado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
                                                                               AS min_espera_primera_atencion,
                 ROUND(EXTRACT(EPOCH FROM (MAX(ap.hora_finalizado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
@@ -478,7 +492,8 @@ router.get('/reporte-detallado', async (req, res) => {
              LEFT JOIN asignaciones_profesionales ap ON ap.paciente_cola_id = pc.id
              WHERE pc.fecha = $1
              GROUP BY pc.id, pc.numero_identificacion, pc.primer_nombre,
-                      pc.primer_apellido, pc.prioridad, pc.hora_llegada, pc.hora_admision
+                      pc.primer_apellido, pc.prioridad, pc.hora_llegada,
+                      pc.hora_llamado_admision, pc.hora_admision
              ORDER BY pc.hora_llegada`,
             [fecha]
         );
@@ -517,8 +532,10 @@ router.get('/reporte-detallado', async (req, res) => {
             `SELECT
                 COUNT(DISTINCT pc.id)                                              AS total_pacientes,
                 COUNT(DISTINCT pc.id) FILTER (WHERE pc.estado_admision='admisionado') AS admisionados,
-                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
-                      FILTER (WHERE pc.hora_admision IS NOT NULL))                 AS avg_espera_admision,
+                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
+                      FILTER (WHERE pc.hora_llamado_admision IS NOT NULL))          AS avg_espera_admision,
+                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
+                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL)) AS avg_registro,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
                       FILTER (WHERE ap.estado='finalizado' AND ap.activo))         AS avg_tiempo_atencion_general,
                 COUNT(*) FILTER (WHERE ap.origen = 'manual' AND ap.activo)         AS particulares,
@@ -583,8 +600,10 @@ router.get('/reporte-rango', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
                       FILTER (WHERE ap.estado='finalizado' AND ap.activo AND ap.hora_en_atencion IS NOT NULL))
                                                                                    AS avg_min_atencion,
-                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llegada))/60)
-                      FILTER (WHERE pc.hora_admision IS NOT NULL))                 AS avg_espera_admision
+                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
+                      FILTER (WHERE pc.hora_llamado_admision IS NOT NULL))          AS avg_espera_admision,
+                ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
+                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL)) AS avg_registro
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
                 ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
