@@ -99,6 +99,23 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 
 .vacia { text-align: center; padding: 40px; color: var(--gris); }
 
+/* Banner de reconexión (franja bajo el header) */
+.banner-reconexion { background: #f59e0b; color: #1e293b; font-weight: 700; text-align: center; padding: 8px 16px; font-size: .85rem; flex-shrink: 0; }
+
+/* Modal Reasignar */
+.reasig-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.75); z-index: 250; display: none; align-items: center; justify-content: center; }
+.reasig-overlay.visible { display: flex; }
+.reasig-card { background: white; border-radius: 14px; padding: 24px; width: 400px; max-width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
+.reasig-titulo { font-size: 1.1rem; font-weight: 700; color: var(--azul); }
+.reasig-sub { font-size: .85rem; color: var(--gris); margin-top: 4px; }
+.reasig-lista { list-style: none; border: 1.5px solid var(--borde); border-radius: 8px; overflow-y: auto; margin: 14px 0; max-height: 42vh; }
+.reasig-lista li[data-nombre] { padding: 10px 12px; cursor: pointer; font-size: .92rem; border-bottom: 1px solid var(--borde); }
+.reasig-lista li[data-nombre]:last-child { border-bottom: none; }
+.reasig-lista li[data-nombre]:hover { background: #eff6ff; }
+.reasig-vacia { padding: 18px; text-align: center; color: var(--gris); font-size: .9rem; }
+.btn-reasig-cancelar { align-self: flex-end; background: white; border: 2px solid var(--borde); color: var(--gris); border-radius: 8px; padding: 8px 18px; font-size: .85rem; font-weight: 600; cursor: pointer; }
+.btn-reasig-cancelar:hover { border-color: var(--rojo); color: var(--rojo); }
+
 /* Temporizador en atención */
 .timer-atencion { font-size: .78rem; color: var(--azul2); font-weight: 600; background: #dbeafe; padding: 2px 8px; border-radius: 6px; }
 </style>
@@ -148,6 +165,9 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     </div>
 </div>
 
+<!-- Banner de reconexión: visible solo mientras el socket está caído -->
+<div class="banner-reconexion" id="banner-reconexion" style="display:none">⚠ Sin conexión en tiempo real — reconectando…</div>
+
 <div class="main">
     <div class="stats-row">
         <div class="stat-card stat-pendiente"><div class="stat-num" id="cnt-pendiente">0</div><div class="stat-label">Pendientes</div></div>
@@ -157,6 +177,17 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     </div>
 
     <div id="lista-asignaciones"></div>
+</div>
+
+<!-- Modal Reasignar (reemplaza el prompt nativo) -->
+<div class="reasig-overlay" id="modal-reasignar">
+    <div class="reasig-card">
+        <div class="reasig-titulo">Reasignar paciente</div>
+        <div class="reasig-sub" id="reasig-sub">—</div>
+        <input class="campo-input" id="reasig-filtro" placeholder="Filtrar profesional…" autocomplete="off" oninput="filtrarReasignar(this.value)" style="margin-top:14px">
+        <ul class="reasig-lista" id="reasig-lista"></ul>
+        <button class="btn-reasig-cancelar" onclick="cerrarReasignar()">Cancelar</button>
+    </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -189,6 +220,15 @@ let timerReloj = null;
 let listadoProfesionalesCache = null;
 let listadoProfesionalesTs = 0;
 let contadorFinalizado = 0;
+// P1: conteo real de finalizados de HOY (del endpoint resumen-hoy; el array en vivo no
+// los incluye). P3: ids pendientes de la carga anterior (null = primera carga, sin beep)
+// y contexto de audio reutilizado para el beep de aviso.
+let finalizadosHoy = 0;
+let idsPendientesPrev = null;
+let audioCtxProf = null;
+// P4: id de la asignación a reasignar y opciones (profesionales de hoy, sin el actual).
+let reasigId = null;
+let reasigOpciones = [];
 // Modo gestión: habilita Cancelar/Reasignar. NO se persiste: cada recarga arranca en false
 // para que la sesión no quede abierta sin supervisión.
 let modoGestion = false;
@@ -202,12 +242,16 @@ actualizarReloj();
 const socket = io();
 socket.on('connect', () => {
     document.getElementById('dot-ws').classList.add('ok');
+    document.getElementById('banner-reconexion').style.display = 'none';
     if (profesionalActual) {
         socket.emit('join', { tipo: 'profesional', profesional: profesionalActual, terminalId: TERMINAL_ID, consultorio: consultorioActual });
         cargarAsignaciones();
     }
 });
-socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('disconnect', () => {
+    document.getElementById('dot-ws').classList.remove('ok');
+    document.getElementById('banner-reconexion').style.display = '';
+});
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 // El admin cambió el catálogo: recargar el select (y revalidar el consultorio actual).
 socket.on('consultorios:actualizados', () => cargarCatalogoConsultorios());
@@ -227,8 +271,10 @@ async function buscarProfesional(texto) {
     if (texto.trim().length < 1) { lista.classList.remove('visible'); return; }
     try {
         // Usa el cache si tiene menos de 60s; si no, refetch y actualiza cache + timestamp.
+        // El catálogo (60 días) da sugerencias desde primera hora, aunque Biofile no haya
+        // sincronizado hoy. (Reasignar sigue usando el listado de HOY, que es lo correcto.)
         if (!listadoProfesionalesCache || (Date.now() - listadoProfesionalesTs) > 60000) {
-            const resp = await fetch('/api/profesional/listado-profesionales');
+            const resp = await fetch('/api/profesional/catalogo');
             listadoProfesionalesCache = await resp.json();
             listadoProfesionalesTs = Date.now();
         }
@@ -403,8 +449,60 @@ async function cargarAsignaciones() {
         });
         asignaciones = await resp.json();
 
+        if (!esHistorial) {
+            // P1: el conteo real de finalizados de HOY viene del endpoint (el array en vivo
+            // los excluye). Si falla, se conserva el valor anterior.
+            try {
+                const rf = await fetch(`/api/profesional/resumen-hoy?profesional=${encodeURIComponent(profesionalActual)}`, {
+                    headers: { 'X-Terminal-Id': TERMINAL_ID }
+                });
+                const rd = await rf.json();
+                if (rd && typeof rd.finalizados === 'number') finalizadosHoy = rd.finalizados;
+            } catch {}
+            // P3: beep + parpadeo del título si aparece un pendiente nuevo (no en la 1a carga).
+            detectarPacienteNuevo();
+        }
+
         renderAsignaciones();
     } catch {}
+}
+
+// P3: detecta ids 'pendiente' que no estaban en la carga anterior. La primera carga solo
+// inicializa el set (idsPendientesPrev === null), para no sonar al abrir la pantalla.
+function detectarPacienteNuevo() {
+    const idsAhora = new Set(asignaciones.filter(a => a.estado === 'pendiente').map(a => a.id));
+    if (idsPendientesPrev !== null) {
+        for (const id of idsAhora) {
+            if (!idsPendientesPrev.has(id)) { beepNuevoPaciente(); parpadearTitulo(); break; }
+        }
+    }
+    idsPendientesPrev = idsAhora;
+}
+
+// Beep corto y suave (Web Audio). Todo en try/catch: si el navegador lo bloquea, silencio.
+function beepNuevoPaciente() {
+    try {
+        if (!audioCtxProf) audioCtxProf = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = audioCtxProf;
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 660;
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.2);
+    } catch {}
+}
+
+// Prefija el título de la pestaña con "● " durante 5s (restaurándolo después).
+let tituloTimer = null;
+function parpadearTitulo() {
+    document.title = '● ' + document.title.replace(/^●\s*/, '');
+    clearTimeout(tituloTimer);
+    tituloTimer = setTimeout(() => { document.title = document.title.replace(/^●\s*/, ''); }, 5000);
 }
 
 function renderAsignaciones() {
@@ -415,10 +513,15 @@ function renderAsignaciones() {
     const enAtencion = asignaciones.filter(a => a.estado === 'en_atencion');
     const finalizados = asignaciones.filter(a => a.estado === 'finalizado');
 
+    // En vista de HOY el conteo de finalizados lo tiene el endpoint (finalizadosHoy);
+    // en historial se cuenta del array (que sí incluye finalizados).
+    const fechaSel = document.getElementById('filtro-fecha').value || '';
+    const esHistorial = fechaSel && fechaSel !== fechaHoyLocal();
+
     document.getElementById('cnt-pendiente').textContent = pendientes.length;
     document.getElementById('cnt-llamando').textContent = llamando.length;
     document.getElementById('cnt-atencion').textContent = enAtencion.length;
-    document.getElementById('cnt-finalizado').textContent = finalizados.length;
+    document.getElementById('cnt-finalizado').textContent = esHistorial ? finalizados.length : finalizadosHoy;
 
     if (!asignaciones.length) {
         lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px"></div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
@@ -640,8 +743,8 @@ async function cancelarAsignacion(id) {
     cargarAsignaciones();
 }
 
-// Abre un selector simple (prompt nativo) con la lista de profesionales del día
-// y, si el destino es válido y distinto del actual, dispara la reasignación.
+// Abre el modal de reasignación con la lista de profesionales de HOY (excluyendo al
+// actual). El listado de hoy es el correcto aquí (no el catálogo de 60 días).
 async function abrirReasignar(id) {
     let lista;
     try {
@@ -651,34 +754,55 @@ async function abrirReasignar(id) {
         alert('No se pudo obtener el listado de profesionales. Intente de nuevo.');
         return;
     }
-    if (!Array.isArray(lista) || !lista.length) {
-        alert('No hay profesionales disponibles para reasignar.');
-        return;
-    }
+    if (!Array.isArray(lista)) lista = [];
     // Excluir al profesional actual: no tiene sentido reasignarse a sí mismo.
-    const opciones = lista.filter(n => n.toUpperCase() !== profesionalActual.toUpperCase());
-    if (!opciones.length) {
-        alert('No hay otros profesionales a quienes reasignar.');
-        return;
-    }
-    const menu = opciones.map((n, i) => `${i + 1}. ${n}`).join('\n');
-    const sel = prompt(`Reasignar a:\n${menu}\n\nEscriba el número o el nombre del profesional destino:`);
-    if (sel === null) return; // el usuario canceló el prompt
-    const texto = sel.trim();
-    if (!texto) return;
-    // Permitir elegir por número de la lista o escribiendo el nombre.
-    let destino;
-    if (/^\d+$/.test(texto) && +texto >= 1 && +texto <= opciones.length) {
-        destino = opciones[+texto - 1];
-    } else {
-        destino = opciones.find(n => n.toUpperCase() === texto.toUpperCase()) || texto;
-    }
-    if (destino.toUpperCase() === profesionalActual.toUpperCase()) {
-        alert('No puede reasignar al mismo profesional.');
-        return;
-    }
-    reasignar(id, destino);
+    reasigOpciones = lista.filter(n => String(n).toUpperCase() !== profesionalActual.toUpperCase());
+    reasigId = id;
+
+    const a = asignaciones.find(x => String(x.id) === String(id));
+    document.getElementById('reasig-sub').textContent = a ? (a.nombre_completo || a.numero_identificacion || '') : '';
+    document.getElementById('reasig-filtro').value = '';
+    renderReasignarLista('');
+    document.getElementById('modal-reasignar').classList.add('visible');
+    setTimeout(() => document.getElementById('reasig-filtro').focus(), 50);
 }
+
+// Pinta la lista filtrada; nombres escapados con data-nombre (clic por delegación).
+function renderReasignarLista(filtro) {
+    const ul = document.getElementById('reasig-lista');
+    const q = (filtro || '').trim().toUpperCase();
+    const items = q ? reasigOpciones.filter(n => n.toUpperCase().includes(q)) : reasigOpciones;
+    if (!items.length) {
+        const msg = reasigOpciones.length ? 'Sin coincidencias' : 'No hay otros profesionales disponibles hoy.';
+        ul.innerHTML = `<li class="reasig-vacia">${msg}</li>`;
+        return;
+    }
+    ul.innerHTML = items.map(n => `<li data-nombre="${esc(n)}">${esc(n)}</li>`).join('');
+}
+
+function filtrarReasignar(v) { renderReasignarLista(v); }
+
+function cerrarReasignar() {
+    document.getElementById('modal-reasignar').classList.remove('visible');
+    reasigId = null;
+    reasigOpciones = [];
+}
+
+// Delegación: clic en un nombre → confirmar → reasignar() (existente) y cerrar el modal.
+document.getElementById('reasig-lista').addEventListener('click', (e) => {
+    const li = e.target.closest('li[data-nombre]');
+    if (!li) return;
+    const destino = li.dataset.nombre;
+    if (confirm(`¿Reasignar a ${destino}?`)) {
+        const id = reasigId;
+        cerrarReasignar();
+        reasignar(id, destino);
+    }
+});
+// Cerrar al hacer clic fuera de la tarjeta.
+document.getElementById('modal-reasignar').addEventListener('click', function(e) {
+    if (e.target === this) cerrarReasignar();
+});
 
 // Reasigna la asignación a otro profesional contra el backend.
 async function reasignar(id, nuevoProfesional) {

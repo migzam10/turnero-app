@@ -103,6 +103,24 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .cola-item:hover .btn-edit-pac { display: inline; }
 .btn-edit-pac:hover { border-color: var(--azul2); color: var(--azul2); }
 
+/* Botón eliminar paciente (texto rojo, mismo patrón hover que editar) */
+.btn-del-pac { font-size: 0.7rem; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--borde); background: white; cursor: pointer; color: var(--rojo); display: none; }
+.cola-item:hover .btn-del-pac { display: inline; }
+.btn-del-pac:hover { border-color: var(--rojo); background: #fef2f2; }
+
+/* Búsqueda en la cabecera de la cola */
+.cola-header-top { display: flex; align-items: center; justify-content: space-between; }
+.cola-buscar { border: 1.5px solid var(--borde); border-radius: 7px; padding: 6px 10px; font-size: 0.82rem; font-family: inherit; width: 100%; }
+.cola-buscar:focus { outline: none; border-color: var(--azul2); }
+
+/* Grupo colapsable "Admisionados" */
+.cola-grupo-header { padding: 8px 10px; margin-top: 6px; border-top: 1px solid var(--borde); font-size: 0.78rem; font-weight: 700; color: var(--gris); cursor: pointer; user-select: none; }
+.cola-grupo-header:hover { color: var(--azul); }
+.cola-item.atenuado { opacity: .6; }
+
+/* Banner de reconexión (franja bajo el header) */
+.banner-reconexion { background: #f59e0b; color: #1e293b; font-weight: 700; text-align: center; padding: 8px 16px; font-size: 0.85rem; flex-shrink: 0; }
+
 /* Input scanner oculto */
 #scan-input { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; }
 
@@ -128,6 +146,9 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
+
+<!-- Banner de reconexión: visible solo mientras el socket está caído -->
+<div class="banner-reconexion" id="banner-reconexion" style="display:none">⚠ Sin conexión en tiempo real — reconectando…</div>
 
 <div class="layout">
     <!-- Panel izquierdo -->
@@ -192,6 +213,16 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
                 </div>
             </div>
 
+            <!-- Prioridad del registro (se oculta en modo edición) -->
+            <div class="campo-grupo full" id="grupo-prioridad">
+                <label class="campo-label">Prioridad</label>
+                <div class="prioridad-row" id="form-prioridad-row">
+                    <button type="button" class="prioridad-btn activo" data-val="normal" onclick="seleccionarPrioridadForm('normal')">Normal</button>
+                    <button type="button" class="prioridad-btn" data-val="media" onclick="seleccionarPrioridadForm('media')">Media</button>
+                    <button type="button" class="prioridad-btn" data-val="alta" onclick="seleccionarPrioridadForm('alta')">Alta</button>
+                </div>
+            </div>
+
             <div id="msg-resultado" class="msg-resultado"></div>
 
             <div class="btns-accion">
@@ -204,8 +235,11 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     <!-- Panel derecho - cola del día -->
     <div class="panel-cola">
         <div class="cola-header">
-            <span class="cola-titulo">Cola del día</span>
-            <span class="cola-count" id="cola-count">0</span>
+            <div class="cola-header-top">
+                <span class="cola-titulo">Cola del día</span>
+                <span class="cola-count" id="cola-count">0</span>
+            </div>
+            <input type="text" class="cola-buscar" id="cola-buscar" placeholder="Buscar nombre o cédula…" oninput="filtrarCola(this.value)">
         </div>
         <div class="cola-lista" id="cola-lista">
             <div class="cola-vacia">Sin pacientes registrados hoy</div>
@@ -258,20 +292,27 @@ actualizarReloj();
 const socket = io();
 socket.on('connect', () => {
     document.getElementById('dot-ws').classList.add('ok');
+    document.getElementById('banner-reconexion').style.display = 'none';
     socket.emit('join', { tipo: 'recepcion', terminalId: TERMINAL_ID });
     cargarCola();
 });
-socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('disconnect', () => {
+    document.getElementById('dot-ws').classList.remove('ok');
+    document.getElementById('banner-reconexion').style.display = '';
+});
 socket.on('paciente:nuevo', () => cargarCola());
 socket.on('paciente:prioridad', () => cargarCola());
 socket.on('paciente:actualizado', () => cargarCola());
+socket.on('paciente:eliminado', () => cargarCola());
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 socket.on('admision:completada', () => cargarCola());
 
 // ── Estado de la app ────────────────────────────────────────────
-// La prioridad ya no se selecciona en el formulario: todo registro entra como 'normal'
-// y puede recategorizarse luego desde la cola del día.
-const prioridadActual = 'normal';
+// Prioridad elegida en el formulario de registro (default 'normal').
+let prioridadActual = 'normal';
+// Filtro de la cola (nombre o cédula) y estado del grupo colapsable de admisionados.
+let filtroCola = '';
+let admisionadosAbierto = false;
 let pacienteModalId = null;
 // Id del paciente en edición. null = el formulario registra (INSERT); con valor = actualiza (UPDATE).
 let editandoId = null;
@@ -529,6 +570,14 @@ document.getElementById('f-fecha').addEventListener('input', () => {
 });
 
 // ── Registrar paciente ──────────────────────────────────────────
+// Selecciona la prioridad en el formulario (toggle de la clase 'activo' entre los 3 botones).
+function seleccionarPrioridadForm(val) {
+    prioridadActual = val;
+    document.querySelectorAll('#form-prioridad-row .prioridad-btn').forEach(b => {
+        b.classList.toggle('activo', b.dataset.val === val);
+    });
+}
+
 async function registrarPaciente() {
     const cedula = document.getElementById('f-cedula').value.trim().replace(/\D/g,'');
     const apellido1 = document.getElementById('f-apellido1').value.trim().toUpperCase();
@@ -610,6 +659,8 @@ async function editarPaciente(id) {
         document.getElementById('f-sexo').value = ['M', 'F'].includes(p.sexo) ? p.sexo : '';
 
         editandoId = id;
+        // En edición la prioridad no se toca (el PUT no la actualiza; se cambia desde la cola).
+        document.getElementById('grupo-prioridad').style.display = 'none';
         document.getElementById('preview-titulo').textContent = 'Editando paciente';
         document.getElementById('badge-formato').textContent = 'EDICIÓN';
         document.getElementById('btn-registrar').textContent = 'Guardar cambios';
@@ -627,6 +678,9 @@ function resetearFormulario() {
     document.getElementById('f-tipo').value = 'CC';
     document.getElementById('f-sexo').value = '';
     document.getElementById('badge-formato').textContent = 'MANUAL';
+    // Restaurar la prioridad a 'normal' y volver a mostrar su selector (oculto en edición).
+    document.getElementById('grupo-prioridad').style.display = '';
+    seleccionarPrioridadForm('normal');
     // Salir del modo edición y restaurar el formulario a "registro".
     editandoId = null;
     document.getElementById('preview-titulo').textContent = 'Datos del paciente';
@@ -663,38 +717,97 @@ async function cargarCola() {
     } catch {}
 }
 
+// Cambia el texto del filtro y re-renderiza (sobre el cache; el contador no cambia).
+function filtrarCola(texto) {
+    filtroCola = texto || '';
+    renderCola(colaCache);
+}
+
+// Expande/colapsa la sección de admisionados; el estado sobrevive a los re-renders.
+function toggleAdmisionados() {
+    admisionadosAbierto = !admisionadosAbierto;
+    renderCola(colaCache);
+}
+
+// Construye una fila de la cola. `atenuado` aplica el estilo tenue (admisionados).
+function renderItem(p, atenuado) {
+    const estadoLabel = {
+        esperando: 'Esperando',
+        llamando_admision: 'Llamado',
+        admisionado: 'Admisionado'
+    }[p.estado_admision] || p.estado_admision;
+
+    const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+
+    // Editar y Eliminar solo mientras el paciente sigue 'esperando' (el backend rechaza
+    // ambas acciones una vez llamado/admisionado). El id va en el onclick (UUID seguro);
+    // el nombre se resuelve del cache en la función, nunca se interpola aquí.
+    let acciones = '';
+    if (p.estado_admision === 'esperando') {
+        acciones = `<button class="btn-edit-pac" onclick="event.stopPropagation(); editarPaciente('${p.id}')">Editar</button>
+            <button class="btn-del-pac" onclick="event.stopPropagation(); eliminarPaciente('${p.id}')">Eliminar</button>`;
+    }
+
+    return `<div class="cola-item${atenuado ? ' atenuado' : ''}" onclick="abrirModalPrioridad('${p.id}')">
+        <span class="badge-pri pri-${esc(p.prioridad)}">${esc(String(p.prioridad || '').toUpperCase())}</span>
+        <span class="cola-nombre">${esc(p.nombre_completo)}</span>
+        <span class="cola-estado estado-${esc(p.estado_admision)}">${esc(estadoLabel)} ${hora}</span>
+        ${acciones}
+    </div>`;
+}
+
 function renderCola(lista) {
     const contenedor = document.getElementById('cola-lista');
     colaCache = Array.isArray(lista) ? lista : [];
-    document.getElementById('cola-count').textContent = lista.length;
+    // El contador siempre refleja el TOTAL del día (no el filtrado).
+    document.getElementById('cola-count').textContent = colaCache.length;
 
-    if (!lista.length) {
+    if (!colaCache.length) {
         contenedor.innerHTML = '<div class="cola-vacia">Sin pacientes registrados hoy</div>';
         return;
     }
 
-    contenedor.innerHTML = lista.map(p => {
-        const estadoLabel = {
-            esperando: 'Esperando',
-            llamando_admision: 'Llamado',
-            admisionado: 'Admisionado'
-        }[p.estado_admision] || p.estado_admision;
+    // Filtro client-side por nombre o cédula (case-insensitive).
+    const q = filtroCola.trim().toLowerCase();
+    const coincide = p => !q ||
+        (p.nombre_completo || '').toLowerCase().includes(q) ||
+        String(p.numero_identificacion || '').toLowerCase().includes(q);
+    const visibles = colaCache.filter(coincide);
 
-        const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+    if (!visibles.length) {
+        contenedor.innerHTML = '<div class="cola-vacia">Sin coincidencias</div>';
+        return;
+    }
 
-        // El botón "Editar" solo aparece mientras el paciente sigue 'esperando'
-        // (una vez llamado/admisionado, el backend rechaza la edición).
-        const btnEditar = p.estado_admision === 'esperando'
-            ? `<button class="btn-edit-pac" onclick="event.stopPropagation(); editarPaciente('${p.id}')">Editar</button>`
-            : '';
+    // Pendientes arriba (orden tal como llega del backend); admisionados/otros al final.
+    const pendientes = visibles.filter(p => p.estado_admision === 'esperando' || p.estado_admision === 'llamando_admision');
+    const admisionados = visibles.filter(p => p.estado_admision !== 'esperando' && p.estado_admision !== 'llamando_admision');
 
-        return `<div class="cola-item" onclick="abrirModalPrioridad('${p.id}')">
-            <span class="badge-pri pri-${esc(p.prioridad)}">${esc(String(p.prioridad || '').toUpperCase())}</span>
-            <span class="cola-nombre">${esc(p.nombre_completo)}</span>
-            <span class="cola-estado estado-${esc(p.estado_admision)}">${esc(estadoLabel)} ${hora}</span>
-            ${btnEditar}
-        </div>`;
-    }).join('');
+    let html = pendientes.map(p => renderItem(p, false)).join('');
+    if (admisionados.length) {
+        html += `<div class="cola-grupo-header" onclick="toggleAdmisionados()">${admisionadosAbierto ? '▾' : '▸'} Admisionados (${admisionados.length})</div>`;
+        if (admisionadosAbierto) html += admisionados.map(p => renderItem(p, true)).join('');
+    }
+    contenedor.innerHTML = html;
+}
+
+// Elimina un registro de la cola (solo 'esperando'). Confirma con el nombre resuelto
+// del cache por id (nunca interpolado en el onclick).
+async function eliminarPaciente(id) {
+    const p = colaCache.find(x => String(x.id) === String(id));
+    if (!p) return;
+    const ok = confirm(`¿Eliminar el registro de ${p.nombre_completo} (CC ${p.numero_identificacion})? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    try {
+        const resp = await fetch(`/api/recepcion/${id}`, {
+            method: 'DELETE',
+            headers: { 'X-Terminal-Id': TERMINAL_ID }
+        });
+        if (resp.status === 409) alert('No se puede eliminar: el paciente ya fue llamado o admisionado.');
+    } catch {
+        alert('Error de conexión con el servidor');
+    }
+    cargarCola();
 }
 
 // ── Modal prioridad ─────────────────────────────────────────────

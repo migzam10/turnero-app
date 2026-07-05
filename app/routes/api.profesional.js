@@ -108,6 +108,27 @@ router.get('/catalogo', async (req, res) => {
     }
 });
 
+// GET /api/profesional/resumen-hoy?profesional=NOMBRE
+// Contador "Finalizados hoy" de la pantalla del profesional. La vista en vivo
+// excluye los finalizados, por eso se cuentan aparte aquí.
+router.get('/resumen-hoy', validarTerminalId, async (req, res) => {
+    const { profesional } = req.query;
+    if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
+    try {
+        const { rows } = await query(
+            `SELECT COUNT(*)::int AS finalizados
+             FROM asignaciones_profesionales
+             WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
+               AND activo = true AND estado = 'finalizado'`,
+            [profesional]
+        );
+        return res.json({ finalizados: rows[0].finalizados });
+    } catch (err) {
+        console.error('[profesional/resumen-hoy]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // GET /api/profesional/consultorios
 // Catálogo de consultorios activos para el setup de la pantalla del profesional.
 // Solo lectura, sin validarTerminalId (igual que /listado-profesionales).
