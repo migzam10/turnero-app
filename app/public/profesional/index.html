@@ -117,16 +117,24 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         </div>
         <div class="campo-grupo">
             <label class="campo-label">Consultorio *</label>
-            <input class="campo-input" id="input-consultorio" placeholder="Ej: 5" maxlength="10">
+            <select class="campo-input" id="select-consultorio">
+                <option value="">— Seleccione consultorio —</option>
+            </select>
+            <div id="aviso-sin-consultorios" style="display:none;font-size:.78rem;color:#d97706;margin-top:4px">
+                No hay consultorios configurados. Pida al administrador crearlos en el panel Admin.
+            </div>
         </div>
-        <button class="btn-setup" onclick="confirmarSetup()">Entrar al módulo</button>
+        <button class="btn-setup" id="btn-setup-entrar" onclick="confirmarSetup()">Entrar al módulo</button>
     </div>
 </div>
 
 <div class="header">
     <div class="header-left">
         <div class="h1" id="header-profesional" style="font-weight:700;font-size:1rem">—</div>
-        <div class="sub" id="header-consultorio">Consultorio —</div>
+        <div class="sub" style="display:flex;align-items:center;gap:6px">
+            <span id="header-consultorio">—</span>
+            <span class="badge-gestion" id="badge-multi" style="display:none">MULTI</span>
+        </div>
     </div>
     <div class="header-right">
         <input type="date" id="filtro-fecha" class="filtro-fecha" title="Ver asignaciones de otro día">
@@ -169,6 +177,11 @@ const TERMINAL_ID = (() => {
 
 let profesionalActual = localStorage.getItem('profesional_nombre') || '';
 let consultorioActual = localStorage.getItem('profesional_consultorio') || '';
+// ¿El consultorio actual es multipaciente? Se persiste junto al nombre para no depender
+// del catálogo en el arranque; se revalida contra el catálogo al poblar el select.
+let consultorioMulti = localStorage.getItem('profesional_consultorio_multi') === 'true';
+// Catálogo de consultorios ACTIVOS [{id, nombre, multipaciente}], poblado desde el backend.
+let catalogoConsultorios = [];
 let asignaciones = [];
 let timerReloj = null;
 let contadorFinalizado = 0;
@@ -192,6 +205,8 @@ socket.on('connect', () => {
 });
 socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
+// El admin cambió el catálogo: recargar el select (y revalidar el consultorio actual).
+socket.on('consultorios:actualizados', () => cargarCatalogoConsultorios());
 socket.on('asignacion:llamando', () => cargarAsignaciones());
 socket.on('asignacion:en_atencion', () => cargarAsignaciones());
 socket.on('asignacion:finalizado', () => cargarAsignaciones());
@@ -224,19 +239,97 @@ function seleccionarProf(nombre) {
     document.getElementById('sugerencias').classList.remove('visible');
 }
 
+// Refleja el consultorio en el header: nombre COMPLETO tal cual (sin prefijo) y el
+// badge "MULTI" solo si es multipaciente. En vacío deja "—".
+function aplicarHeaderConsultorio() {
+    document.getElementById('header-consultorio').textContent = consultorioActual || '—';
+    document.getElementById('badge-multi').style.display = consultorioMulti ? '' : 'none';
+}
+
+// Trae los consultorios ACTIVOS y puebla el select. Si el catálogo viene vacío, muestra
+// el aviso y deshabilita "Entrar". Tras poblar, revalida el consultorio guardado.
+async function cargarCatalogoConsultorios() {
+    try {
+        const resp = await fetch('/api/profesional/consultorios');
+        const data = await resp.json();
+        catalogoConsultorios = Array.isArray(data) ? data : [];
+    } catch {
+        catalogoConsultorios = [];
+    }
+    poblarSelectConsultorios();
+    validarConsultorioActual();
+}
+
+// Reconstruye las <option> del select; cada una lleva value=nombre y data-multi.
+function poblarSelectConsultorios() {
+    const sel = document.getElementById('select-consultorio');
+    const aviso = document.getElementById('aviso-sin-consultorios');
+    const btn = document.getElementById('btn-setup-entrar');
+    const seleccionado = sel.value || consultorioActual;
+
+    const opts = ['<option value="">— Seleccione consultorio —</option>'];
+    for (const c of catalogoConsultorios) {
+        const nombre = esc(c.nombre);
+        opts.push(`<option value="${nombre}" data-multi="${c.multipaciente ? 'true' : 'false'}">${nombre}</option>`);
+    }
+    sel.innerHTML = opts.join('');
+
+    if (!catalogoConsultorios.length) {
+        aviso.style.display = '';
+        btn.disabled = true;
+    } else {
+        aviso.style.display = 'none';
+        btn.disabled = false;
+        // Reponer la selección previa si sigue existiendo en el catálogo.
+        if (seleccionado && catalogoConsultorios.some(c => c.nombre === seleccionado)) sel.value = seleccionado;
+    }
+}
+
+// Si hay sesión guardada pero el consultorio ya no está activo (renombrado/desactivado),
+// se reabre el setup para forzar una nueva selección.
+function validarConsultorioActual() {
+    if (!profesionalActual || !consultorioActual) return;
+    if (!catalogoConsultorios.length) return; // sin catálogo aún no se puede validar
+    // Si el setup ya está abierto, no hay que reabrirlo (evita recursión con abrirSetup).
+    const setupVisible = document.getElementById('overlay-setup').style.display !== 'none';
+    const encontrado = catalogoConsultorios.find(c => c.nombre === consultorioActual);
+    if (!encontrado) {
+        if (!setupVisible) {
+            alert('Su consultorio ya no está disponible. Seleccione uno nuevo.');
+            abrirSetup();
+        }
+    } else {
+        // Sincroniza el flag multipaciente con el estado real del catálogo.
+        consultorioMulti = !!encontrado.multipaciente;
+        localStorage.setItem('profesional_consultorio_multi', consultorioMulti ? 'true' : 'false');
+        aplicarHeaderConsultorio();
+    }
+}
+
+// Escapa texto dinámico para inyección segura en innerHTML (nombres del catálogo).
+function esc(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function confirmarSetup() {
     const nombre = document.getElementById('input-profesional').value.trim().toUpperCase();
-    const consultorio = document.getElementById('input-consultorio').value.trim();
+    const sel = document.getElementById('select-consultorio');
+    const consultorio = sel.value.trim();
     if (!nombre) { alert('Ingrese su nombre como aparece en Biofile'); return; }
-    if (!consultorio) { alert('Ingrese el número de consultorio'); return; }
+    if (!consultorio) { alert('Seleccione un consultorio'); return; }
+    const multi = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.multi === 'true';
 
     profesionalActual = nombre;
     consultorioActual = consultorio;
+    consultorioMulti = multi;
     localStorage.setItem('profesional_nombre', profesionalActual);
     localStorage.setItem('profesional_consultorio', consultorioActual);
+    localStorage.setItem('profesional_consultorio_multi', consultorioMulti ? 'true' : 'false');
 
     document.getElementById('header-profesional').textContent = profesionalActual;
-    document.getElementById('header-consultorio').textContent = `Consultorio ${consultorioActual}`;
+    aplicarHeaderConsultorio();
     document.getElementById('overlay-setup').style.display = 'none';
 
     socket.emit('join', { tipo: 'profesional', profesional: profesionalActual, terminalId: TERMINAL_ID, consultorio: consultorioActual });
@@ -248,8 +341,9 @@ function abrirSetup() {
     modoGestion = false;
     aplicarEstadoGestion();
     document.getElementById('input-profesional').value = profesionalActual;
-    document.getElementById('input-consultorio').value = consultorioActual;
     document.getElementById('overlay-setup').style.display = 'flex';
+    // Refrescar el catálogo (poblarSelectConsultorios repone la selección guardada).
+    cargarCatalogoConsultorios();
 }
 
 // Cierra la sesión del profesional: limpia los datos guardados y vuelve a la
@@ -257,18 +351,21 @@ function abrirSetup() {
 function cerrarSesion() {
     profesionalActual = '';
     consultorioActual = '';
+    consultorioMulti = false;
     asignaciones = [];
     modoGestion = false;
     aplicarEstadoGestion();
     localStorage.removeItem('profesional_nombre');
     localStorage.removeItem('profesional_consultorio');
+    localStorage.removeItem('profesional_consultorio_multi');
 
     document.getElementById('header-profesional').textContent = '—';
-    document.getElementById('header-consultorio').textContent = 'Consultorio —';
+    aplicarHeaderConsultorio();
     document.getElementById('input-profesional').value = '';
-    document.getElementById('input-consultorio').value = '';
+    document.getElementById('select-consultorio').value = '';
     document.getElementById('lista-asignaciones').innerHTML = '';
     document.getElementById('overlay-setup').style.display = 'flex';
+    cargarCatalogoConsultorios();
 }
 
 // ── Asignaciones ────────────────────────────────────────────────
@@ -342,7 +439,10 @@ function renderAsignaciones() {
 }
 
 function renderCard(a) {
-    const tieneActivo = asignaciones.some(x => x.estado === 'llamando' || x.estado === 'en_atencion');
+    // En consultorio multipaciente no se bloquea "Llamar" aunque haya otros pacientes
+    // en llamando/en atención (el backend lo permite para tomas de muestras, etc.).
+    const tieneActivo = !consultorioMulti &&
+        asignaciones.some(x => x.estado === 'llamando' || x.estado === 'en_atencion');
     const nombreStr = a.nombre_completo || a.numero_identificacion;
     const tiempoLlegadaFisica = a.hora_llegada_fisica
         ? new Date(a.hora_llegada_fisica).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
@@ -616,11 +716,14 @@ function volverAHoy() {
 // ── Init ────────────────────────────────────────────────────────
 if (profesionalActual && consultorioActual) {
     document.getElementById('header-profesional').textContent = profesionalActual;
-    document.getElementById('header-consultorio').textContent = `Consultorio ${consultorioActual}`;
+    aplicarHeaderConsultorio();
     document.getElementById('overlay-setup').style.display = 'none';
 } else {
     document.getElementById('overlay-setup').style.display = 'flex';
 }
+// Cargar el catálogo al arrancar: puebla el select y revalida el consultorio guardado
+// (si fue renombrado/desactivado, validarConsultorioActual reabre el setup).
+cargarCatalogoConsultorios();
 
 // Actualizar timers de atención cada minuto
 setInterval(() => { if (asignaciones.some(a => a.estado === 'en_atencion')) renderAsignaciones(); }, 60000);

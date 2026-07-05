@@ -106,20 +106,50 @@ router.get('/catalogo', async (req, res) => {
     }
 });
 
+// GET /api/profesional/consultorios
+// Catálogo de consultorios activos para el setup de la pantalla del profesional.
+// Solo lectura, sin validarTerminalId (igual que /listado-profesionales).
+router.get('/consultorios', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT id, nombre, multipaciente FROM consultorios
+             WHERE activo = true ORDER BY nombre`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error('[profesional/consultorios]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // POST /api/profesional/llamar/:id
 router.post('/llamar/:id', validarTerminalId, async (req, res) => {
     const { profesional, consultorio } = req.body;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
+        // Consultorio multipaciente (toma de muestras, laboratorio, psicología…):
+        // permite varios pacientes activos a la vez → se omite el guard de paciente
+        // activo. Si el nombre no está en el catálogo (texto legacy) queda false.
+        let esMultipaciente = false;
+        if (consultorio) {
+            const { rows: cons } = await query(
+                `SELECT multipaciente FROM consultorios WHERE nombre = $1 AND activo = true`,
+                [consultorio]
+            );
+            esMultipaciente = cons[0]?.multipaciente === true;
+        }
+
         // Bug #6: bloquear si el profesional ya tiene un paciente activo
-        const { rows: activos } = await query(
-            `SELECT 1 FROM asignaciones_profesionales
-             WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
-               AND activo = true
-               AND estado IN ('llamando','en_atencion') LIMIT 1`,
-            [profesional]
-        );
-        if (activos.length > 0) return res.status(409).json({ error: 'ya_tiene_paciente_activo' });
+        if (!esMultipaciente) {
+            const { rows: activos } = await query(
+                `SELECT 1 FROM asignaciones_profesionales
+                 WHERE nombre_profesional = $1 AND fecha = CURRENT_DATE
+                   AND activo = true
+                   AND estado IN ('llamando','en_atencion') LIMIT 1`,
+                [profesional]
+            );
+            if (activos.length > 0) return res.status(409).json({ error: 'ya_tiene_paciente_activo' });
+        }
 
         // Bug #7: bloquear si el paciente ya está siendo atendido por otro profesional
         const { rows: bloqueado } = await query(
