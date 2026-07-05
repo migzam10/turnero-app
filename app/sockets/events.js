@@ -4,7 +4,7 @@ function registrarEventosSocket(io) {
     io.on('connection', (socket) => {
         console.log(`[WS] Conectado: ${socket.id}`);
 
-        socket.on('join', async ({ tipo, profesional, terminalId, consultorio }) => {
+        socket.on('join', async ({ tipo, profesional, terminalId, consultorio, audioOk }) => {
             if (!tipo) return;
 
             socket.join(tipo);
@@ -19,12 +19,13 @@ function registrarEventosSocket(io) {
             if (terminalId) {
                 try {
                     await query(
-                        `INSERT INTO terminales (id, tipo, login_name_biofile, consultorio_numero, ultimo_heartbeat)
-                         VALUES ($1, $2, $3, $4, NOW())
+                        `INSERT INTO terminales (id, tipo, login_name_biofile, consultorio_numero, audio_ok, ultimo_heartbeat)
+                         VALUES ($1, $2, $3, $4, $5, NOW())
                          ON CONFLICT (id) DO UPDATE
-                         SET tipo = $2, login_name_biofile = $3, consultorio_numero = $4,
+                         SET tipo = $2, login_name_biofile = $3, consultorio_numero = $4, audio_ok = $5,
                              ultimo_heartbeat = NOW(), updated_at = NOW()`,
-                        [terminalId, tipo, profesional || null, consultorio || null]
+                        [terminalId, tipo, profesional || null, consultorio || null,
+                         typeof audioOk === 'boolean' ? audioOk : null]
                     );
                 } catch (err) {
                     console.error('[WS] Error al registrar terminal:', err.message);
@@ -34,12 +35,17 @@ function registrarEventosSocket(io) {
             console.log(`[WS] ${socket.id} sala=${tipo}${profesional ? ' prof=' + profesional : ''}`);
         });
 
-        socket.on('heartbeat', async ({ terminalId }) => {
+        socket.on('heartbeat', async ({ terminalId, audioOk }) => {
             if (!terminalId) return;
             try {
+                // COALESCE conserva el valor previo si el heartbeat no reporta audio.
                 await query(
-                    `UPDATE terminales SET ultimo_heartbeat = NOW(), updated_at = NOW() WHERE id = $1`,
-                    [terminalId]
+                    `UPDATE terminales
+                     SET ultimo_heartbeat = NOW(),
+                         audio_ok = COALESCE($2, audio_ok),
+                         updated_at = NOW()
+                     WHERE id = $1`,
+                    [terminalId, typeof audioOk === 'boolean' ? audioOk : null]
                 );
             } catch (_) {}
         });

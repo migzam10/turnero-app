@@ -76,6 +76,11 @@ tr:hover td { background: #f8fafc; }
 .btn-exportar { background: var(--verde); color: white; border: none; border-radius: 7px; padding: 7px 14px; font-size: .85rem; font-weight: 600; cursor: pointer; }
 .btn-exportar:hover { background: #15803d; }
 .btn-actualizar { background: var(--azul2); color: white; border: none; border-radius: 7px; padding: 7px 12px; font-size: .82rem; cursor: pointer; }
+/* Acciones compactas en tablas (consultorios) */
+.btn-mini { border: 1px solid var(--borde); background: white; color: var(--azul); border-radius: 6px; padding: 4px 10px; font-size: .78rem; font-weight: 600; cursor: pointer; margin-right: 6px; }
+.btn-mini:hover { background: #f1f5f9; }
+.btn-mini.peligro { color: var(--rojo); border-color: #fecaca; }
+.btn-mini.peligro:hover { background: #fef2f2; }
 
 /* Config form */
 .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; padding: 16px; }
@@ -260,6 +265,32 @@ tr:hover td { background: #f8fafc; }
                 </div>
             </div>
         </div>
+
+        <!-- Consultorios (movido desde su antigua pestaña) -->
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Nuevo consultorio</span></div>
+            <div style="padding:16px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:260px;">
+                    <div class="config-key">Nombre</div>
+                    <input class="config-val" id="cons-nombre" maxlength="60" style="width:100%; max-width:420px"
+                           placeholder="Ej: Consultorio 1, Toma de Muestras — nombre completo como se verá en pantalla">
+                </div>
+                <label style="display:flex; align-items:center; gap:6px; font-size:.85rem; color:var(--gris); font-weight:600; padding-bottom:6px;">
+                    <input type="checkbox" id="cons-multi"> Multipaciente (puede llamar a varios a la vez)
+                </label>
+                <button class="btn-buscar" onclick="crearConsultorio()">Crear</button>
+            </div>
+        </div>
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Consultorios configurados</span></div>
+            <div class="tabla-wrapper">
+                <table id="tabla-consultorios">
+                    <thead><tr><th>Nombre</th><th>Multipaciente</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody id="tbody-consultorios"><tr><td colspan="4" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Parámetros del sistema</span>
@@ -280,6 +311,20 @@ tr:hover td { background: #f8fafc; }
                 <table>
                     <thead><tr><th>ID</th><th>Tipo</th><th>Consultorio</th><th>Profesional / Login</th><th>Último heartbeat</th><th>Estado</th></tr></thead>
                     <tbody id="tbody-terminales"><tr><td colspan="6" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pantallas (Displays TV) — movido desde su antigua pestaña -->
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Pantallas (Displays TV)</span>
+                <button class="btn-actualizar" onclick="cargarPantallas()">Actualizar</button>
+            </div>
+            <div class="tabla-wrapper">
+                <table>
+                    <thead><tr><th>Terminal</th><th>Última señal</th><th>Estado</th><th>Audio</th></tr></thead>
+                    <tbody id="tbody-pantallas"><tr><td colspan="4" class="loader">Cargando...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -373,6 +418,8 @@ socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
 // El backend notifica a la sala admin en cada mutación; refrescamos el dashboard en vivo.
 socket.on('UPDATE_PATIENTS', () => refrescarDashboardDebounced());
+// Catálogo de consultorios: cualquier cambio (propio o de otra terminal) recarga la tabla.
+socket.on('consultorios:actualizados', () => { if (adminToken) cargarConsultorios(); });
 
 // ── Tabs ────────────────────────────────────────────────────────
 function mostrarTab(nombre) {
@@ -386,8 +433,12 @@ function mostrarTab(nombre) {
 
     if (nombre === 'dashboard') cargarDashboard();
     if (nombre === 'graficas') cargarGraficas();
-    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); }
-    if (nombre === 'terminales') cargarTerminales();
+    // Consultorios vive ahora dentro de Configuración.
+    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarConsultorios(); }
+
+    // Terminales incluye la sección Pantallas; su auto-refresco corre solo con la pestaña activa.
+    if (nombre === 'terminales') { cargarTerminales(); cargarPantallas(); iniciarAutoRefrescoPantallas(); }
+    else detenerAutoRefrescoPantallas();
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -806,6 +857,121 @@ async function cargarGraficas() {
     });
 }
 
+// ── Consultorios (catálogo administrable) ─────────────────────
+// Caché de la última tabla cargada. Se usa para resolver el nombre por id en el
+// prompt de renombrar sin embeberlo en el onclick (evita romper el string / XSS,
+// ya que los atributos HTML se decodifican antes de evaluar el JS).
+let consultoriosCache = [];
+
+// Carga todas las filas (activas e inactivas) y las pinta en la tabla. Cada acción
+// hace su PATCH/POST y recarga; el socket 'consultorios:actualizados' también recarga.
+async function cargarConsultorios() {
+    const tbody = document.getElementById('tbody-consultorios');
+    try {
+        const resp = await fetchAdmin('/api/admin/consultorios');
+        const filas = await resp.json();
+        consultoriosCache = Array.isArray(filas) ? filas : [];
+        if (!consultoriosCache.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="loader">No hay consultorios. Cree el primero arriba.</td></tr>';
+            return;
+        }
+        // El backend ya entrega alfabético; se ordena localmente por nombre por robustez.
+        consultoriosCache.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+        tbody.innerHTML = consultoriosCache.map(c => {
+            const multi = c.multipaciente
+                ? '<span class="badge b-finalizado">VARIOS</span>'
+                : '<span style="color:var(--gris)">—</span>';
+            const estado = c.activo
+                ? '<span class="badge b-finalizado">Activo</span>'
+                : '<span class="badge b-normal">Inactivo</span>';
+            const toggleMultiTxt = c.multipaciente ? 'Quitar multipaciente' : 'Marcar multipaciente';
+            const toggleActivoBtn = c.activo
+                ? `<button class="btn-mini peligro" onclick="toggleConsultorioActivo('${c.id}', false)">Desactivar</button>`
+                : `<button class="btn-mini" onclick="toggleConsultorioActivo('${c.id}', true)">Activar</button>`;
+            return `<tr>
+                <td>${esc(c.nombre)}</td>
+                <td>${multi}</td>
+                <td>${estado}</td>
+                <td>
+                    <button class="btn-mini" onclick="renombrarConsultorio('${c.id}')">Renombrar</button>
+                    <button class="btn-mini" onclick="toggleConsultorioMulti('${c.id}', ${!c.multipaciente})">${toggleMultiTxt}</button>
+                    ${toggleActivoBtn}
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        if (e.message !== 'no_autorizado') {
+            tbody.innerHTML = '<tr><td colspan="4" class="loader">No se pudo cargar el catálogo.</td></tr>';
+        }
+    }
+}
+
+// Traduce el status de error del backend a un mensaje para el usuario. Devuelve
+// true si manejó el error (para cortar el flujo); false si la respuesta fue OK.
+async function manejarErrorConsultorio(resp) {
+    if (resp.ok) return false;
+    let err = '';
+    try { err = (await resp.json()).error || ''; } catch {}
+    if (resp.status === 409 || err === 'nombre_duplicado') alert('Ya existe un consultorio con ese nombre');
+    else if (resp.status === 400 || err === 'nombre_requerido') alert('El nombre del consultorio es obligatorio');
+    else if (resp.status === 404) alert('El consultorio ya no existe; se actualizará la lista.');
+    else alert('No se pudo completar la operación');
+    return true;
+}
+
+async function crearConsultorio() {
+    const nombre = document.getElementById('cons-nombre').value.trim();
+    if (!nombre) { alert('El nombre del consultorio es obligatorio'); return; }
+    const multipaciente = document.getElementById('cons-multi').checked;
+    try {
+        const resp = await fetchAdmin('/api/admin/consultorios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, multipaciente })
+        });
+        if (await manejarErrorConsultorio(resp)) return;
+        // Limpiar el formulario y recargar (el socket recargará las demás terminales).
+        document.getElementById('cons-nombre').value = '';
+        document.getElementById('cons-multi').checked = false;
+        cargarConsultorios();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('Error de conexión con el servidor');
+    }
+}
+
+async function patchConsultorio(id, cambios) {
+    try {
+        const resp = await fetchAdmin(`/api/admin/consultorios/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cambios)
+        });
+        if (await manejarErrorConsultorio(resp)) { cargarConsultorios(); return; }
+        cargarConsultorios();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('Error de conexión con el servidor');
+    }
+}
+
+function renombrarConsultorio(id) {
+    const actual = consultoriosCache.find(c => c.id === id);
+    const nombreActual = actual ? actual.nombre : '';
+    const nuevo = prompt('Nuevo nombre del consultorio:', nombreActual);
+    if (nuevo === null) return; // canceló
+    const limpio = nuevo.trim();
+    if (!limpio) { alert('El nombre del consultorio es obligatorio'); return; }
+    if (limpio === nombreActual) return; // sin cambios
+    patchConsultorio(id, { nombre: limpio });
+}
+
+function toggleConsultorioMulti(id, valor) {
+    patchConsultorio(id, { multipaciente: valor });
+}
+
+function toggleConsultorioActivo(id, valor) {
+    patchConsultorio(id, { activo: valor });
+}
+
 // ── Configuración ─────────────────────────────────────────────
 async function cargarConfig() {
     const grid = document.getElementById('config-grid');
@@ -1006,6 +1172,59 @@ async function cargarTerminales() {
             </tr>`;
         }).join('');
     } catch {}
+}
+
+// ── Pantallas (Displays TV) ───────────────────────────────────
+// Auto-refresco cada 15s SOLO mientras la pestaña está activa (se limpia en mostrarTab).
+let pantallasInterval = null;
+
+function iniciarAutoRefrescoPantallas() {
+    detenerAutoRefrescoPantallas();
+    pantallasInterval = setInterval(cargarPantallas, 15000);
+}
+function detenerAutoRefrescoPantallas() {
+    if (pantallasInterval) { clearInterval(pantallasInterval); pantallasInterval = null; }
+}
+
+// "hace Xs" / "hace Xm" a partir de un timestamp; "nunca" si es null.
+function haceCuanto(ts) {
+    if (!ts) return 'nunca';
+    const segs = Math.floor((Date.now() - new Date(ts)) / 1000);
+    if (segs < 60) return `hace ${Math.max(segs, 0)}s`;
+    if (segs < 3600) return `hace ${Math.floor(segs / 60)}m`;
+    return `hace ${Math.floor(segs / 3600)}h`;
+}
+
+async function cargarPantallas() {
+    const tbody = document.getElementById('tbody-pantallas');
+    try {
+        const resp = await fetchAdmin('/api/admin/pantallas');
+        const pantallas = await resp.json();
+        if (!Array.isArray(pantallas) || !pantallas.length) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gris)">Ningún display se ha conectado aún.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = pantallas.map(p => {
+            const idCorto = String(p.id || '').slice(-8) || '—';
+            const estado = p.en_linea
+                ? '<span style="color:var(--verde);font-weight:700">🟢 En línea</span>'
+                : '<span style="color:var(--rojo);font-weight:700">🔴 Sin conexión</span>';
+            let audio;
+            if (p.audio_ok === null || p.audio_ok === undefined) audio = '<span style="color:var(--gris)">—</span>';
+            else if (p.audio_ok) audio = '<span style="color:var(--verde);font-weight:700">🔊 OK</span>';
+            else audio = '<span style="color:var(--rojo);font-weight:700">🔇 BLOQUEADO</span>';
+            return `<tr>
+                <td style="font-family:monospace;font-size:.82rem">…${esc(idCorto)}</td>
+                <td>${esc(haceCuanto(p.ultimo_heartbeat))}</td>
+                <td>${estado}</td>
+                <td>${audio}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        if (e.message !== 'no_autorizado') {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gris)">No se pudieron cargar las pantallas.</td></tr>';
+        }
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────

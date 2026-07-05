@@ -91,6 +91,107 @@ router.get('/terminales', async (req, res) => {
     }
 });
 
+// ── Monitoreo de pantallas (displays) ─────────────────────────
+// Estado en línea (heartbeat < 90s) y audio desbloqueado de cada terminal display.
+router.get('/pantallas', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT id, ultimo_heartbeat, audio_ok,
+                    (ultimo_heartbeat IS NOT NULL
+                     AND ultimo_heartbeat > NOW() - INTERVAL '90 seconds') AS en_linea
+             FROM terminales
+             WHERE tipo = 'display'
+             ORDER BY ultimo_heartbeat DESC NULLS LAST`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error('[admin/pantallas]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// ── Catálogo de consultorios ──────────────────────────────────
+// CRUD administrado desde Admin. Baja lógica (activo=false) vía PATCH; sin DELETE.
+// `nombre` es texto COMPLETO que ve el paciente; `multipaciente` permite llamar a
+// varios pacientes a la vez desde ese consultorio.
+
+router.get('/consultorios', async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT id, nombre, multipaciente, activo, created_at, updated_at
+             FROM consultorios ORDER BY nombre`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error('[admin/consultorios:list]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+router.post('/consultorios', async (req, res) => {
+    const { nombre, multipaciente } = req.body;
+    const nombreLimpio = String(nombre || '').trim();
+    if (!nombreLimpio || nombreLimpio.length > 60) {
+        return res.status(400).json({ error: 'nombre_requerido' });
+    }
+    const multi = multipaciente === true;
+    try {
+        const { rows } = await query(
+            `INSERT INTO consultorios (nombre, multipaciente)
+             VALUES ($1, $2)
+             RETURNING id, nombre, multipaciente, activo, created_at, updated_at`,
+            [nombreLimpio, multi]
+        );
+        const io = req.app.get('io');
+        if (io) io.emit('consultorios:actualizados', { ts: Date.now() });
+        return res.status(201).json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'nombre_duplicado' });
+        console.error('[admin/consultorios:create]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+router.patch('/consultorios/:id', async (req, res) => {
+    // SET dinámico seguro: solo se tocan los campos presentes en el body, siempre
+    // con placeholders (nunca concatenación de valores).
+    const { nombre, multipaciente, activo } = req.body;
+    const sets = [];
+    const params = [];
+    let i = 1;
+
+    if (nombre !== undefined) {
+        const nombreLimpio = String(nombre || '').trim();
+        if (!nombreLimpio || nombreLimpio.length > 60) {
+            return res.status(400).json({ error: 'nombre_requerido' });
+        }
+        sets.push(`nombre = $${i++}`); params.push(nombreLimpio);
+    }
+    if (multipaciente !== undefined) { sets.push(`multipaciente = $${i++}`); params.push(multipaciente === true); }
+    if (activo !== undefined) { sets.push(`activo = $${i++}`); params.push(activo === true); }
+
+    if (sets.length === 0) return res.status(400).json({ error: 'sin_cambios' });
+    sets.push(`updated_at = NOW()`);
+    params.push(req.params.id);
+
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE consultorios SET ${sets.join(', ')}
+             WHERE id = $${i}
+             RETURNING id, nombre, multipaciente, activo, created_at, updated_at`,
+            params
+        );
+        if (rowCount === 0) return res.status(404).json({ error: 'consultorio_no_encontrado' });
+        const io = req.app.get('io');
+        if (io) io.emit('consultorios:actualizados', { ts: Date.now() });
+        return res.json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'nombre_duplicado' });
+        console.error('[admin/consultorios:update]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 // ── Dashboard — resumen del día ───────────────────────────────
 
 router.get('/resumen-dia', async (req, res) => {

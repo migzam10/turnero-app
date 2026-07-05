@@ -21,7 +21,7 @@ router.get('/activos', async (req, res) => {
         );
 
         const { rows: profesionales } = await query(
-            `SELECT ap.numero_identificacion, ap.nombre_profesional, ap.consultorio_profesional, ap.area,
+            `SELECT ap.id, ap.numero_identificacion, ap.nombre_profesional, ap.consultorio_profesional, ap.area,
                     COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
@@ -40,13 +40,14 @@ router.get('/activos', async (req, res) => {
             })),
             ...profesionales.map(a => ({
                 tipo: 'profesional',
+                id: a.id,
                 numero_identificacion: a.numero_identificacion,
                 nombre_paciente: a.nombre_paciente,
                 nombre_profesional: a.nombre_profesional,
                 consultorio: a.consultorio_profesional,
-                destino: a.consultorio_profesional
-                    ? `Consultorio ${a.consultorio_profesional}`
-                    : (a.area || 'Consultorio')
+                // El nombre del catálogo ya es COMPLETO ("Toma de Muestras",
+                // "Consultorio 1"): se muestra tal cual, sin prefijar "Consultorio ".
+                destino: a.consultorio_profesional || (a.area || 'Consultorio')
             }))
         ];
 

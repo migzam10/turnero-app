@@ -173,3 +173,32 @@ ALTER TABLE pacientes_cola
 ALTER TABLE pacientes_cola
     ADD CONSTRAINT pacientes_cola_estado_admision_check
     CHECK (estado_admision IN ('esperando','llamando_admision','admisionando','admisionado'));
+
+-- ── Catálogo de consultorios (v6) ────────────────────────────────────────────
+-- Administrado desde el panel Admin. `nombre` es el texto COMPLETO que ve el
+-- paciente en pantalla ("Consultorio 1", "Toma de Muestras"). `multipaciente`
+-- permite que el profesional en ese consultorio llame a varios pacientes a la
+-- vez (omite el guard ya_tiene_paciente_activo). Baja lógica con `activo`.
+CREATE TABLE IF NOT EXISTS consultorios (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre        VARCHAR(60) NOT NULL UNIQUE,
+    multipaciente BOOLEAN NOT NULL DEFAULT false,
+    activo        BOOLEAN NOT NULL DEFAULT true,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- El orden manual se eliminó: el catálogo se lista alfabéticamente por nombre.
+ALTER TABLE consultorios DROP COLUMN IF EXISTS orden;
+
+-- El nombre del catálogo puede superar los 20 chars del campo original.
+ALTER TABLE asignaciones_profesionales
+    ALTER COLUMN consultorio_profesional TYPE VARCHAR(60);
+ALTER TABLE terminales
+    ALTER COLUMN consultorio_numero TYPE VARCHAR(60);
+
+-- ── Monitoreo de pantallas (v7) ──────────────────────────────────────────────
+-- Los displays reportan en su heartbeat si el audio del navegador está
+-- desbloqueado (política de autoplay). NULL = terminal que no reporta audio.
+ALTER TABLE terminales
+    ADD COLUMN IF NOT EXISTS audio_ok BOOLEAN;

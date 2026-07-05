@@ -10,12 +10,13 @@ router.get('/publica', async (req, res) => {
     try {
         const { rows } = await query(
             `SELECT clave, valor FROM configuracion
-             WHERE clave IN ('titulo_sufijo', 'display_logo')`
+             WHERE clave IN ('titulo_sufijo', 'display_logo', 'sonido_habilitado')`
         );
         const cfg = Object.fromEntries(rows.map(r => [r.clave, r.valor]));
         return res.json({
             titulo_sufijo: cfg.titulo_sufijo || 'Turnero CertiMedic',
-            display_logo: cfg.display_logo || ''
+            display_logo: cfg.display_logo || '',
+            sonido_habilitado: cfg.sonido_habilitado !== 'false'   // default true
         });
     } catch (err) {
         console.error('[config/publica]', err);
