@@ -230,4 +230,51 @@ router.patch('/:id/prioridad', validarTerminalId, async (req, res) => {
     }
 });
 
+// DELETE /api/recepcion/:id — elimina un registro erróneo. Solo mientras está
+// 'esperando' (aún no llamado/admisionado), mismo criterio que la edición. El
+// evento de auditoría sobrevive al borrado (pacienteId null a propósito; los
+// datos identificatorios quedan en el JSONB).
+router.delete('/:id', validarTerminalId, async (req, res) => {
+    try {
+        // Se lee la fila antes de borrar para poder auditar nombre/cédula.
+        const { rows: previa, rowCount: existe } = await query(
+            `SELECT id, numero_identificacion, estado_admision,
+                    primer_nombre || ' ' || primer_apellido AS nombre_completo
+             FROM pacientes_cola
+             WHERE id = $1 AND fecha = CURRENT_DATE`,
+            [req.params.id]
+        );
+        if (existe === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
+        if (previa[0].estado_admision !== 'esperando') {
+            return res.status(409).json({ error: 'no_eliminable' });
+        }
+
+        const { rowCount } = await query(
+            `DELETE FROM pacientes_cola
+             WHERE id = $1 AND fecha = CURRENT_DATE AND estado_admision = 'esperando'
+             RETURNING id`,
+            [req.params.id]
+        );
+        // Carrera: cambió de estado entre el SELECT y el DELETE.
+        if (rowCount === 0) return res.status(409).json({ error: 'no_eliminable' });
+
+        const io = req.app.get('io');
+        io.to('recepcion').emit('paciente:eliminado', { id: req.params.id });
+        io.to('admisiones').emit('paciente:eliminado', { id: req.params.id });
+        emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'paciente_eliminado',
+            descripcion: `Eliminado ${previa[0].nombre_completo} (CC ${previa[0].numero_identificacion})`,
+            pacienteId: null, terminalId: req.terminalId,
+            datos: { cedula: previa[0].numero_identificacion, nombre: previa[0].nombre_completo }
+        });
+
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error('[recepcion/eliminar]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
 module.exports = router;

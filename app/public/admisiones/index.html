@@ -93,10 +93,6 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .dato-label { font-size: .68rem; font-weight: 600; color: var(--gris); text-transform: uppercase; }
 .dato-val { font-size: .9rem; font-weight: 600; margin-top: 2px; }
 .dato-item.full { grid-column: 1/-1; }
-.btn-copiar { width: 100%; background: var(--verde); color: white; border: none; border-radius: 8px; padding: 10px; font-size: .9rem; font-weight: 700; cursor: pointer; margin-bottom: 8px; }
-.btn-copiar:hover { background: #15803d; }
-.btn-copiar:active { background: #166534; }
-.btn-copiar.copiado { background: #166534; }
 .modal-footer { display: flex; gap: 8px; margin-top: 12px; }
 .btn-outline { flex: 1; padding: 9px; border-radius: 8px; border: 2px solid var(--borde); background: white; cursor: pointer; font-size: .85rem; color: var(--gris); }
 .btn-outline:hover { border-color: var(--rojo); color: var(--rojo); }
@@ -107,6 +103,24 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .prioridad-btn[data-val="normal"].activo { border-color: var(--verde); background: #dcfce7; color: var(--verde); }
 .prioridad-btn[data-val="media"].activo { border-color: var(--naranja); background: #fef3c7; color: var(--naranja); }
 .prioridad-btn[data-val="alta"].activo { border-color: var(--rojo); background: #fee2e2; color: var(--rojo); }
+
+/* Tarjeta de otro módulo (solo lectura) + badge */
+.pac-card.atenuado { opacity: .6; }
+.badge-otro { background: #fef3c7; color: #92400e; font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-left: 6px; }
+
+/* Búsqueda en el título de la cola */
+.cola-buscar { margin-left: auto; border: 1.5px solid var(--borde); border-radius: 7px; padding: 6px 10px; font-size: .82rem; font-family: inherit; font-weight: 400; width: 220px; }
+.cola-buscar:focus { outline: none; border-color: var(--azul2); }
+
+/* Banner de reconexión (franja bajo el header) */
+.banner-reconexion { background: #f59e0b; color: #1e293b; font-weight: 700; text-align: center; padding: 8px 16px; font-size: .85rem; flex-shrink: 0; }
+
+/* Toasts (abajo a la derecha, apilables) */
+#toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 500; display: flex; flex-direction: column; gap: 10px; }
+.toast { min-width: 240px; max-width: 360px; padding: 12px 16px; border-radius: 10px; font-size: .9rem; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.15); animation: toastIn .25s ease; }
+.toast.error { background: #fee2e2; color: var(--rojo); border: 1.5px solid #fca5a5; }
+.toast.ok { background: #dcfce7; color: var(--verde); border: 1.5px solid #86efac; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 </style>
 </head>
 <body data-modulo="Admisiones">
@@ -135,12 +149,16 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     </div>
 </div>
 
+<!-- Banner de reconexión: visible solo mientras el socket está caído -->
+<div class="banner-reconexion" id="banner-reconexion" style="display:none">⚠ Sin conexión en tiempo real — reconectando…</div>
+
 <div class="layout">
     <!-- Cola de espera -->
     <div class="panel-cola">
         <div class="panel-titulo">
             Cola de espera
             <span class="count-badge" id="count-espera">0</span>
+            <input type="text" class="cola-buscar" id="cola-buscar" placeholder="Buscar nombre o cédula…" oninput="filtrarCola(this.value)">
         </div>
         <div id="lista-espera"></div>
     </div>
@@ -188,6 +206,9 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
     </div>
 </div>
 
+<!-- Contenedor de toasts -->
+<div id="toast-container"></div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="/branding.js"></script>
 <script>
@@ -222,6 +243,19 @@ let llamadoEnCurso = false;
 let asigPacienteId = null;
 let catalogoProfesionales = null; // null = aún no cargado
 let asignacionEnCurso = false;
+// Filtro de búsqueda de la cola (nombre o cédula), aplicado client-side al render.
+let filtroCola = '';
+
+// Mini sistema de toasts (abajo a la derecha, apilables, auto-cierre a los 4s).
+function showToast(mensaje, tipo = 'error') {
+    const cont = document.getElementById('toast-container');
+    if (!cont) return;
+    const el = document.createElement('div');
+    el.className = `toast ${tipo === 'ok' ? 'ok' : 'error'}`;
+    el.textContent = mensaje;
+    cont.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+}
 
 // ── Reloj ───────────────────────────────────────────────────────
 function actualizarReloj() {
@@ -234,12 +268,17 @@ actualizarReloj();
 const socket = io();
 socket.on('connect', () => {
     document.getElementById('dot-ws').classList.add('ok');
+    document.getElementById('banner-reconexion').style.display = 'none';
     socket.emit('join', { tipo: 'admisiones', terminalId: TERMINAL_ID });
     cargarCola();
 });
-socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+socket.on('disconnect', () => {
+    document.getElementById('dot-ws').classList.remove('ok');
+    document.getElementById('banner-reconexion').style.display = '';
+});
 socket.on('paciente:nuevo', () => cargarCola());
 socket.on('paciente:prioridad', () => cargarCola());
+socket.on('paciente:eliminado', () => cargarCola());
 socket.on('admision:llamando', () => cargarCola());
 socket.on('admision:completada',() => cargarCola());
 socket.on('admision:devuelto', () => cargarCola());
@@ -290,20 +329,38 @@ async function cargarCola() {
     } catch {}
 }
 
+// ¿El paciente está en proceso por OTRO módulo (solo lectura en esta terminal)?
+function esOtroModulo(p) {
+    return (p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando')
+        && p.modulo_admision !== moduloActual;
+}
+
+// "· espera X min" desde hora_llegada, con color según umbral (naranja ≥30, rojo ≥60).
+function esperaHtml(p) {
+    if (!p.hora_llegada) return '';
+    const mins = Math.floor((Date.now() - new Date(p.hora_llegada)) / 60000);
+    if (mins < 0) return '';
+    let estilo = '';
+    if (mins >= 60) estilo = 'color:var(--rojo);font-weight:700';
+    else if (mins >= 30) estilo = 'color:var(--naranja);font-weight:700';
+    return ` · <span style="${estilo}">espera ${mins} min</span>`;
+}
+
 function renderCola() {
-    // Render in-place (homologado con Profesionales): la cola muestra los pacientes
-    // en espera y, en su misma fila, el que ESTE módulo tenga en proceso. Los pacientes
-    // que están siendo procesados por otro módulo no se muestran en esta terminal.
+    // La cola muestra: los pacientes en espera, los que ESTE módulo tiene en proceso, y
+    // —solo lectura— los que otros módulos están procesando (tarjeta atenuada).
     const visibles = colaActual.filter(p =>
         p.estado_admision === 'esperando' ||
-        (p.estado_admision === 'llamando_admision' && p.modulo_admision === moduloActual) ||
-        (p.estado_admision === 'admisionando' && p.modulo_admision === moduloActual)
+        ((p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando') && p.modulo_admision === moduloActual) ||
+        esOtroModulo(p)
     );
     const espera = visibles.filter(p => p.estado_admision === 'esperando');
-    // "En proceso" abarca las dos etapas del flujo (llamando → admisionando): mientras
-    // exista un paciente en cualquiera de ellas, "Llamar" queda bloqueado.
-    const enProceso = visibles.filter(p => p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando');
+    // "En proceso" (para el bloqueo) considera SOLO el módulo propio: lo que hagan otros
+    // módulos no debe impedir que esta terminal llame a un paciente.
+    const enProceso = visibles.filter(p =>
+        (p.estado_admision === 'llamando_admision' || p.estado_admision === 'admisionando') && p.modulo_admision === moduloActual);
 
+    // El contador sigue mostrando solo 'esperando'.
     document.getElementById('count-espera').textContent = espera.length;
 
     // Bloqueo de concurrencia: si este módulo ya tiene un paciente en proceso
@@ -317,20 +374,31 @@ function renderCola() {
         return;
     }
 
-    listaEl.innerHTML = visibles.map(p => {
-        const llamando = p.estado_admision === 'llamando_admision';
-        const admisionando = p.estado_admision === 'admisionando';
+    // Filtro client-side por nombre o cédula (afecta las tarjetas, no el contador).
+    const q = filtroCola.trim().toLowerCase();
+    const mostrados = q ? visibles.filter(p =>
+        (p.nombre_completo || '').toLowerCase().includes(q) ||
+        String(p.numero_identificacion || '').toLowerCase().includes(q)) : visibles;
+
+    if (!mostrados.length) {
+        listaEl.innerHTML = '<div class="vacia">Sin coincidencias</div>';
+        return;
+    }
+
+    listaEl.innerHTML = mostrados.map(p => {
+        const otro = esOtroModulo(p);
+        const llamando = p.estado_admision === 'llamando_admision' && !otro;
+        const admisionando = p.estado_admision === 'admisionando' && !otro;
         const activo = llamando || admisionando; // marca de tarjeta para ambas etapas en proceso
         const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
 
-        // Flujo de dos pasos: al "Llamar" la fila no se mueve, solo cambian sus controles.
-        //   • llamando_admision → Sonar + Admisionando (inicia el trámite) + Cancelar
-        //   • admisionando      → Finalizar (cierra el trámite); sin Sonar ni Cancelar
-        // "Asignar a profesional": disponible para todo paciente presente hoy en la cola
-        // (esperando o en proceso por este módulo); es un flujo manual para particulares.
+        // Flujo de dos pasos (módulo propio): al "Llamar" la fila no se mueve, solo cambian
+        // sus controles. Otro módulo → tarjeta atenuada con badge y solo "Ver datos".
         const btnAsignar = `<button class="btn-sm btn-asignar" onclick="abrirAsignar('${p.id}')">Asignar a profesional</button>`;
         let botones;
-        if (admisionando) {
+        if (otro) {
+            botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>`;
+        } else if (admisionando) {
             botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                <button class="btn-sm btn-admisionar" onclick="finalizarPaciente('${p.id}')">Finalizar</button>
                ${btnAsignar}`;
@@ -346,18 +414,34 @@ function renderCola() {
                ${btnAsignar}`;
         }
 
-        return `<div class="pac-card${activo ? ' activo' : ''}">
+        // Línea secundaria: cédula · hora, más el badge "En {módulo}" (otro) o la espera.
+        let subExtra = '';
+        if (otro) subExtra = `<span class="badge-otro">En ${esc(p.modulo_admision || 'otro módulo')}</span>`;
+        else if (p.estado_admision === 'esperando') subExtra = esperaHtml(p);
+
+        return `<div class="pac-card${activo ? ' activo' : ''}${otro ? ' atenuado' : ''}">
             <div class="pac-top">
                 <div class="pri-dot pri-${esc(p.prioridad)}"></div>
                 <div class="pac-info">
                     <div class="pac-nombre">${esc(p.nombre_completo)}</div>
-                    <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}</div>
+                    <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}${subExtra}</div>
                 </div>
             </div>
             <div class="pac-btns">${botones}</div>
         </div>`;
     }).join('');
 }
+
+// Filtro de búsqueda: actualiza el texto y re-renderiza (no afecta el contador total).
+function filtrarCola(texto) {
+    filtroCola = texto || '';
+    renderCola();
+}
+
+// Re-render periódico para refrescar el "espera X min" mientras haya pacientes esperando.
+setInterval(() => {
+    if (colaActual.some(p => p.estado_admision === 'esperando')) renderCola();
+}, 60000);
 
 // Reenvía la alerta de audio/display del paciente ya llamado por este módulo.
 function sonarPaciente(id) {
@@ -385,9 +469,9 @@ async function llamarPaciente(id) {
             headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
             body: JSON.stringify({ modulo: moduloActual })
         });
-        if (!resp.ok) { const d = await resp.json(); alert(d.error === 'estado_invalido' ? 'El paciente ya fue llamado' : d.error); }
+        if (!resp.ok) { const d = await resp.json(); showToast(d.error === 'estado_invalido' ? 'El paciente ya fue llamado' : (d.error || 'No se pudo llamar al paciente'), 'error'); }
     } catch {
-        alert('Error de conexión con el servidor');
+        showToast('Error de conexión con el servidor', 'error');
     } finally {
         // El re-render por estado mantiene el bloqueo si el paciente quedó "en proceso";
         // si el llamado falló, los botones se rehabilitan al no haber paciente en proceso.
@@ -406,10 +490,10 @@ async function admisionandoPaciente(id) {
         });
         if (resp.ok) { cerrarModal(); cargarCola(); return; }
         const d = await resp.json().catch(() => ({}));
-        alert(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo iniciar la admisión'));
+        showToast(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo iniciar la admisión'), 'error');
         cargarCola();
     } catch {
-        alert('Error de conexión con el servidor');
+        showToast('Error de conexión con el servidor', 'error');
     }
 }
 
@@ -422,10 +506,10 @@ async function finalizarPaciente(id) {
         });
         if (resp.ok) { cerrarModal(); cargarCola(); return; }
         const d = await resp.json().catch(() => ({}));
-        alert(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo finalizar la admisión'));
+        showToast(d.error === 'estado_invalido' ? 'El estado del paciente cambió; se actualizará la lista.' : (d.error || 'No se pudo finalizar la admisión'), 'error');
         cargarCola();
     } catch {
-        alert('Error de conexión con el servidor');
+        showToast('Error de conexión con el servidor', 'error');
     }
 }
 
@@ -568,8 +652,15 @@ function enviarAsignacion() {
 
 async function asignarProfesional(pacienteId, nombre, area) {
     const prof = (nombre || '').trim().toUpperCase();
-    if (!prof) { alert('Ingrese el nombre del profesional.'); return; }
+    if (!prof) { showToast('Ingrese el nombre del profesional.', 'error'); return; }
     if (asignacionEnCurso) return; // evita doble submit
+
+    // Si el catálogo está cargado y el nombre no coincide con ninguno, pedir confirmación
+    // (posible error de escritura). Cancelar aborta sin deshabilitar el botón.
+    if (Array.isArray(catalogoProfesionales) && catalogoProfesionales.length &&
+        !catalogoProfesionales.some(n => String(n).toUpperCase() === prof)) {
+        if (!confirm(`"${prof}" no aparece en el histórico de profesionales. Verifique la escritura. ¿Asignar de todas formas?`)) return;
+    }
 
     asignacionEnCurso = true;
     const btn = document.getElementById('asig-btn-enviar');
@@ -586,14 +677,14 @@ async function asignarProfesional(pacienteId, nombre, area) {
             return;
         }
         if (resp.status === 409) {
-            alert('El paciente ya está asignado a ese profesional.');
+            showToast('El paciente ya está asignado a ese profesional.', 'error');
         } else if (resp.status === 404) {
-            alert('Paciente no encontrado o de otra fecha.');
+            showToast('Paciente no encontrado o de otra fecha.', 'error');
         } else {
-            alert('No se pudo asignar el profesional. Intente de nuevo.');
+            showToast('No se pudo asignar el profesional. Intente de nuevo.', 'error');
         }
     } catch {
-        alert('Error de conexión con el servidor.');
+        showToast('Error de conexión con el servidor.', 'error');
     } finally {
         asignacionEnCurso = false;
         // Si el modal sigue abierto (hubo error), rehabilita el botón para reintentar.

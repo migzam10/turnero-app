@@ -184,38 +184,6 @@ router.post('/devolver/:id', validarTerminalId, async (req, res) => {
     }
 });
 
-// GET /api/admisiones/datos-pegado/:id
-// Devuelve string Tab-separado para pegar en Biofile
-router.get('/datos-pegado/:id', validarTerminalId, async (req, res) => {
-    try {
-        const { rows, rowCount } = await query(
-            `SELECT numero_identificacion, ciudad_expedicion,
-                    TO_CHAR(fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento_fmt,
-                    primer_apellido, segundo_apellido, primer_nombre, segundo_nombre
-             FROM pacientes_cola
-             WHERE id = $1 AND fecha = CURRENT_DATE`,
-            [req.params.id]
-        );
-        if (rowCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
-
-        const p = rows[0];
-        const tabString = [
-            p.numero_identificacion || '',
-            p.ciudad_expedicion || '',
-            p.fecha_nacimiento_fmt || '',
-            p.primer_apellido || '',
-            p.segundo_apellido || '',
-            p.primer_nombre || '',
-            p.segundo_nombre || ''
-        ].join('\t');
-
-        return res.json({ tabString, paciente: rows[0] });
-    } catch (err) {
-        console.error('[admisiones/datos-pegado]', err);
-        return res.status(500).json({ error: 'db_error' });
-    }
-});
-
 // POST /api/admisiones/asignar-profesional/:id
 // Asigna manualmente un paciente de la cola (que NO llegó por Biofile, p.ej. un
 // "particular") a un profesional, creando una fila origen='manual' en
