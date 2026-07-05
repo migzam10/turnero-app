@@ -184,6 +184,10 @@ let consultorioMulti = localStorage.getItem('profesional_consultorio_multi') ===
 let catalogoConsultorios = [];
 let asignaciones = [];
 let timerReloj = null;
+// Cache del listado de profesionales para el autocompletar del setup: evita un fetch
+// por cada tecla. Se refresca si tiene más de 60s o cuando Biofile sincroniza.
+let listadoProfesionalesCache = null;
+let listadoProfesionalesTs = 0;
 let contadorFinalizado = 0;
 // Modo gestión: habilita Cancelar/Reasignar. NO se persiste: cada recarga arranca en false
 // para que la sesión no quede abierta sin supervisión.
@@ -213,7 +217,7 @@ socket.on('asignacion:finalizado', () => cargarAsignaciones());
 socket.on('asignacion:cancelado', () => cargarAsignaciones());
 socket.on('asignacion:reasignado', () => cargarAsignaciones());
 socket.on('asignacion:cancelado_manual', () => cargarAsignaciones());
-socket.on('extension:sync', () => cargarAsignaciones());
+socket.on('extension:sync', () => { listadoProfesionalesCache = null; cargarAsignaciones(); });
 socket.on('UPDATE_PATIENTS', () => cargarAsignaciones());
 
 // ── Setup ───────────────────────────────────────────────────────
@@ -222,8 +226,13 @@ async function buscarProfesional(texto) {
     // Despliega la lista desde el primer carácter escrito.
     if (texto.trim().length < 1) { lista.classList.remove('visible'); return; }
     try {
-        const resp = await fetch('/api/profesional/listado-profesionales');
-        const todos = await resp.json();
+        // Usa el cache si tiene menos de 60s; si no, refetch y actualiza cache + timestamp.
+        if (!listadoProfesionalesCache || (Date.now() - listadoProfesionalesTs) > 60000) {
+            const resp = await fetch('/api/profesional/listado-profesionales');
+            listadoProfesionalesCache = await resp.json();
+            listadoProfesionalesTs = Date.now();
+        }
+        const todos = listadoProfesionalesCache;
         const filtrados = todos.filter(n => n.toUpperCase().includes(texto.trim().toUpperCase()));
         if (filtrados.length) {
             // El nombre va como data-nombre (escapado); un listener delegado lo lee del
@@ -393,10 +402,6 @@ async function cargarAsignaciones() {
             headers: { 'X-Terminal-Id': TERMINAL_ID }
         });
         asignaciones = await resp.json();
-
-        // También obtener finalizados del día
-        const respFin = await fetch(`/api/admin/resumen-dia`);
-        const resumen = await respFin.json();
 
         renderAsignaciones();
     } catch {}
