@@ -95,11 +95,10 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 <div id="banner-audio" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#dc2626;color:#fff;font-size:1.3rem;font-weight:800;text-align:center;padding:14px 20px;letter-spacing:.02em">🔇 SONIDO DESACTIVADO — presione OK en el control o toque la pantalla</div>
 
 <div class="header">
-    <div class="logo" data-titulo-base="">TURNERO CERTIMEDIC</div>
+    <div class="logo" id="logo-display" data-titulo-base="" style="cursor:default">TURNERO CERTIMEDIC</div>
     <div class="header-right">
         <span id="reloj-display">--:--:--</span>
         <div class="dot-ws" id="dot-ws"></div>
-        <button onclick="salir()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:7px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Salir</button>
     </div>
 </div>
 
@@ -145,10 +144,24 @@ function actualizarReloj() {
 setInterval(actualizarReloj, 1000);
 actualizarReloj();
 
-// Botón "Salir": vuelve al menú principal.
+// "Salir" vuelve al menú principal. Ya no hay botón visible: se accede con triple-click
+// en el logo, para que pacientes/curiosos no puedan sacar la TV del modo display.
 function salir() {
     window.location.href = '/';
 }
+
+// Triple-click en el logo dentro de una ventana de 600 ms → salir().
+(() => {
+    const logo = document.getElementById('logo-display');
+    if (!logo) return;
+    let clicks = 0, resetTimer = null;
+    logo.addEventListener('click', () => {
+        clicks++;
+        clearTimeout(resetTimer);
+        if (clicks >= 3) { clicks = 0; salir(); return; }
+        resetTimer = setTimeout(() => { clicks = 0; }, 600);
+    });
+})();
 
 // Escapa texto dinámico antes de inyectarlo en innerHTML (el nombre del consultorio
 // proviene del catálogo administrable, así que puede contener caracteres especiales).
@@ -184,7 +197,7 @@ const estado = {
     progresoStart: null,
 };
 
-const DURACION_LLAMADO = 8000; // ms
+let duracionLlamado = 8000; // ms — configurable vía duracion_anuncio_seg (config pública)
 
 // Estado de audio/energía. sonidoHabilitado por defecto true hasta leer la config pública.
 let sonidoHabilitado = true;
@@ -390,15 +403,15 @@ function mostrarLlamado(llamado) {
     barra.style.transition = 'none';
     barra.style.width = '100%';
     setTimeout(() => {
-        barra.style.transition = `width ${DURACION_LLAMADO}ms linear`;
+        barra.style.transition = `width ${duracionLlamado}ms linear`;
         barra.style.width = '0%';
     }, 50);
 
     beepDoble();
 
-    estado.progresoTimer = setTimeout(procesarSiguiente, DURACION_LLAMADO);
+    estado.progresoTimer = setTimeout(procesarSiguiente, duracionLlamado);
     // Segundo timbre 1.5s antes de que el anuncio desaparezca.
-    estado.beepFinalTimer = setTimeout(beepDoble, DURACION_LLAMADO - 1500);
+    estado.beepFinalTimer = setTimeout(beepDoble, duracionLlamado - 1500);
 }
 
 function ocultarLlamado() {
@@ -670,12 +683,15 @@ function yaAnunciado(a) {
     return todos.some(c => c.tipo === 'admision' && c.id === a.id);
 }
 
-// Lee la config pública para saber si el sonido está habilitado (default true si falla).
+// Lee la config pública: sonido habilitado (default true) y duración del anuncio
+// (default 8s). Se re-lee en 'config:actualizada', así el cambio aplica en vivo.
 async function cargarConfigPublica() {
     try {
         const resp = await fetch('/api/config/publica');
         const cfg = await resp.json();
         sonidoHabilitado = cfg.sonido_habilitado !== false;
+        const seg = Number(cfg.duracion_anuncio_seg);
+        if (Number.isFinite(seg) && seg > 0) duracionLlamado = seg * 1000;
     } catch {
         sonidoHabilitado = true;
     }

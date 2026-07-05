@@ -96,6 +96,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Texto personalizado que acompaña el nombre de cada módulo en el título'),
     ('display_logo',            '',
      'Logo del Display en formato data URL (vacío = ícono por defecto)'),
+    ('duracion_anuncio_seg',    '8',
+     'Segundos que dura cada anuncio en la pantalla TV (4-30)'),
     ('version_db',              '1',
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;

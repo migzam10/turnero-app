@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { pool, query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
+const { registrarEvento } = require('../utils/audit');
 
 const router = Router();
 
@@ -233,6 +234,13 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('asignacion:llamando', payload);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'prof_llamado',
+            descripcion: `${profesional} llamó a ${payload.nombre_paciente} (${consultorio || fila.area || 'sin consultorio'})`,
+            pacienteId: fila.paciente_cola_id, terminalId: req.terminalId,
+            datos: { profesional, consultorio: consultorio || null }
+        });
+
         return res.json(payload);
     } catch (err) {
         console.error('[profesional/llamar]', err);
@@ -269,6 +277,13 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('asignacion:en_atencion', payload);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'prof_en_atencion',
+            descripcion: `${payload.nombre_paciente} en atención con ${rows[0].nombre_profesional}`,
+            pacienteId: rows[0].paciente_cola_id, terminalId: req.terminalId,
+            datos: { profesional: rows[0].nombre_profesional }
+        });
+
         return res.json(payload);
     } catch (err) {
         console.error('[profesional/en-atencion]', err);
@@ -294,6 +309,13 @@ router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('asignacion:cancelado', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'prof_llamado_cancelado',
+            descripcion: `${rows[0].nombre_profesional} canceló el llamado de ${rows[0].nombre_paciente || rows[0].numero_identificacion}`,
+            pacienteId: rows[0].paciente_cola_id, terminalId: req.terminalId,
+            datos: { profesional: rows[0].nombre_profesional }
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         console.error('[profesional/cancelar-llamado]', err);
@@ -318,6 +340,13 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:finalizado', rows[0]);
         io.to('display').emit('asignacion:finalizado', rows[0]);
         emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'prof_finalizado',
+            descripcion: `${rows[0].nombre_profesional} finalizó a ${rows[0].nombre_paciente || rows[0].numero_identificacion}`,
+            pacienteId: rows[0].paciente_cola_id, terminalId: req.terminalId,
+            datos: { profesional: rows[0].nombre_profesional }
+        });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -354,6 +383,13 @@ router.post('/reasignar/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('asignacion:reasignado', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'prof_reasignado',
+            descripcion: `Asignación de ${rows[0].nombre_paciente || rows[0].numero_identificacion}: ${viejo} → ${nuevo}`,
+            pacienteId: rows[0].paciente_cola_id, terminalId: req.terminalId,
+            datos: { de: viejo, a: nuevo }
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         // UNIQUE (fecha, numero_identificacion, columna_header): el paciente ya tiene
@@ -386,6 +422,13 @@ router.post('/cancelar-asignacion/:id', validarTerminalId, async (req, res) => {
         io.to(`profesional:${prof}`).emit('asignacion:cancelado_manual', rows[0]);
         io.to('display').emit('asignacion:cancelado_manual', rows[0]);
         emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'asignacion_cancelada',
+            descripcion: `Baja manual de ${rows[0].nombre_paciente || rows[0].numero_identificacion} con ${prof}`,
+            pacienteId: rows[0].paciente_cola_id, terminalId: req.terminalId,
+            datos: { profesional: prof }
+        });
 
         return res.json(rows[0]);
     } catch (err) {

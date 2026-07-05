@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { pool, query } = require('../database/db');
 const { validarExtensionSecret } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
+const { registrarEvento } = require('../utils/audit');
 
 const router = Router();
 
@@ -216,6 +217,14 @@ router.post('/sync', async (req, res) => {
         if (resultados.nuevos > 0) {
             io.to(`profesional:${loginName}`).emit('extension:sync', { loginName, resultados });
         }
+    }
+
+    if (resultados.reconciliados > 0) {
+        registrarEvento({
+            tipo: 'sync_reconciliacion',
+            descripcion: `Reconciliación: ${resultados.reconciliados} bajas (login ${loginName})`,
+            terminalId, datos: { loginName, reconciliados: resultados.reconciliados }
+        });
     }
 
     return res.json({ ok: true, ...resultados });

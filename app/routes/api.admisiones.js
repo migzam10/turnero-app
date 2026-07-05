@@ -2,8 +2,12 @@ const { Router } = require('express');
 const { query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
+const { registrarEvento } = require('../utils/audit');
 
 const router = Router();
+
+// Nombre legible del paciente a partir de la fila de pacientes_cola (para audit).
+const nombrePac = (r) => `${r.primer_nombre || ''} ${r.primer_apellido || ''}`.trim() || r.numero_identificacion;
 
 // GET /api/admisiones/cola
 router.get('/cola', validarTerminalId, async (req, res) => {
@@ -51,6 +55,13 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('admision:llamando', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'admision_llamado',
+            descripcion: `${nombrePac(rows[0])} llamado a ${rows[0].modulo_admision}`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { modulo: rows[0].modulo_admision }
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         console.error('[admisiones/llamar]', err);
@@ -83,6 +94,13 @@ router.post('/admisionando/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('admision:completada', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'admision_admisionando',
+            descripcion: `${nombrePac(rows[0])} en admisión (${rows[0].modulo_admision})`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { modulo: rows[0].modulo_admision }
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         console.error('[admisiones/admisionando]', err);
@@ -114,6 +132,13 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
         io.to('display').emit('admision:completada', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'admision_finalizada',
+            descripcion: `Admisión de ${nombrePac(rows[0])} finalizada`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { modulo: rows[0].modulo_admision }
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         console.error('[admisiones/finalizar]', err);
@@ -144,6 +169,13 @@ router.post('/devolver/:id', validarTerminalId, async (req, res) => {
         io.to('admisiones').emit('admision:devuelto', rows[0]);
         io.to('display').emit('admision:devuelto', rows[0]);
         emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'admision_devuelta',
+            descripcion: `${nombrePac(rows[0])} devuelto a espera (${rows[0].modulo_anterior})`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { modulo: rows[0].modulo_anterior }
+        });
 
         return res.json(rows[0]);
     } catch (err) {
@@ -234,6 +266,13 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
         io.to(`profesional:${profesional}`).emit('asignacion:manual', rows[0]);
         io.to('display').emit('asignacion:manual', rows[0]);
         emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'asignacion_manual',
+            descripcion: `${pc.nombre_paciente} asignado a ${profesional}`,
+            pacienteId: pc.id, terminalId: req.terminalId,
+            datos: { profesional, area: area || null }
+        });
 
         return res.status(201).json(rows[0]);
     } catch (err) {

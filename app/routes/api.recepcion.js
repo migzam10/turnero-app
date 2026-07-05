@@ -2,6 +2,7 @@ const { Router } = require('express');
 const { query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
+const { registrarEvento } = require('../utils/audit');
 
 const router = Router();
 
@@ -107,6 +108,13 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         io.to('admisiones').emit('paciente:nuevo', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'paciente_registrado',
+            descripcion: `Registrado ${rows[0].primer_nombre} ${rows[0].primer_apellido} (CC ${rows[0].numero_identificacion})`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { numero_identificacion: rows[0].numero_identificacion, prioridad: rows[0].prioridad }
+        });
+
         return res.status(201).json(rows[0]);
     } catch (err) {
         console.error('[recepcion/registrar]', err);
@@ -169,6 +177,12 @@ router.put('/:id', validarTerminalId, async (req, res) => {
         io.to('admisiones').emit('paciente:actualizado', rows[0]);
         emitUpdatePatients(io);
 
+        registrarEvento({
+            tipo: 'paciente_editado',
+            descripcion: `Editado ${rows[0].primer_nombre} ${rows[0].primer_apellido} (CC ${rows[0].numero_identificacion})`,
+            pacienteId: rows[0].id, terminalId: req.terminalId
+        });
+
         return res.json(rows[0]);
     } catch (err) {
         if (err.code === '23505') {
@@ -186,10 +200,13 @@ router.patch('/:id/prioridad', validarTerminalId, async (req, res) => {
         return res.status(400).json({ error: 'prioridad inválida' });
     }
     try {
+        // Se captura la prioridad anterior en el mismo statement (patrón self-join
+        // ya usado en /devolver) para la auditoría {de, a}, sin query extra.
         const { rows, rowCount } = await query(
-            `UPDATE pacientes_cola SET prioridad = $1, updated_at = NOW()
-             WHERE id = $2 AND fecha = CURRENT_DATE
-             RETURNING *`,
+            `UPDATE pacientes_cola pc SET prioridad = $1, updated_at = NOW()
+             FROM (SELECT id, prioridad FROM pacientes_cola WHERE id = $2) old
+             WHERE pc.id = old.id AND pc.fecha = CURRENT_DATE
+             RETURNING pc.*, old.prioridad AS prioridad_anterior`,
             [prioridad, req.params.id]
         );
         if (rowCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
@@ -198,6 +215,13 @@ router.patch('/:id/prioridad', validarTerminalId, async (req, res) => {
         io.to('recepcion').emit('paciente:prioridad', rows[0]);
         io.to('admisiones').emit('paciente:prioridad', rows[0]);
         emitUpdatePatients(io);
+
+        registrarEvento({
+            tipo: 'prioridad_cambiada',
+            descripcion: `Prioridad de ${rows[0].primer_nombre} ${rows[0].primer_apellido} → ${prioridad}`,
+            pacienteId: rows[0].id, terminalId: req.terminalId,
+            datos: { de: rows[0].prioridad_anterior, a: prioridad }
+        });
 
         return res.json(rows[0]);
     } catch (err) {
