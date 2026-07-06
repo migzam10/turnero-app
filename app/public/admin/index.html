@@ -142,7 +142,6 @@ tr:hover td { background: #f8fafc; }
     <div class="tab" data-tab="pacientes" onclick="mostrarTab('pacientes')">Pacientes</div>
     <div class="tab" data-tab="reportes" onclick="mostrarTab('reportes')">Reportes</div>
     <div class="tab" data-tab="graficas" onclick="mostrarTab('graficas')">Gráficas</div>
-    <div class="tab" data-tab="eventos" onclick="mostrarTab('eventos')">Eventos</div>
     <div class="tab" data-tab="configuracion" onclick="mostrarTab('configuracion')">Configuración</div>
     <div class="tab" data-tab="terminales" onclick="mostrarTab('terminales')">Terminales</div>
 </div>
@@ -230,26 +229,6 @@ tr:hover td { background: #f8fafc; }
         </div>
     </div>
 
-    <!-- ─────────── EVENTOS (auditoría) ─────────── -->
-    <div class="panel" id="panel-eventos">
-        <div class="fecha-row">
-            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
-            <input type="date" id="eventos-fecha">
-            <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Tipo:</label>
-            <select id="eventos-tipo" onchange="renderEventos()"><option value="">Todos</option></select>
-            <button class="btn-buscar" onclick="cargarEventos()">Actualizar</button>
-        </div>
-        <div class="seccion">
-            <div class="seccion-header"><span class="seccion-titulo">Registro de eventos</span></div>
-            <div class="tabla-wrapper">
-                <table>
-                    <thead><tr><th>Hora</th><th>Tipo</th><th>Descripción</th></tr></thead>
-                    <tbody id="tbody-eventos"><tr><td colspan="3" class="loader">Cargando...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
     <!-- ─────────── CONFIGURACIÓN ─────────── -->
     <div class="panel" id="panel-configuracion">
         <div class="seccion">
@@ -318,6 +297,24 @@ tr:hover td { background: #f8fafc; }
                 <button class="btn-actualizar" onclick="cargarConfig()">Recargar</button>
             </div>
             <div class="config-grid" id="config-grid"><div class="loader">Cargando...</div></div>
+        </div>
+
+        <!-- Eventos (auditoría) — movido desde su antigua pestaña -->
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Eventos (auditoría)</span></div>
+            <div class="fecha-row" style="padding:14px 16px 0">
+                <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Fecha:</label>
+                <input type="date" id="eventos-fecha">
+                <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Tipo:</label>
+                <select id="eventos-tipo" onchange="renderEventos()"><option value="">Todos</option></select>
+                <button class="btn-buscar" onclick="cargarEventos()">Actualizar</button>
+            </div>
+            <div class="tabla-wrapper">
+                <table>
+                    <thead><tr><th>Hora</th><th>Tipo</th><th>Descripción</th></tr></thead>
+                    <tbody id="tbody-eventos"><tr><td colspan="3" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -473,9 +470,8 @@ function mostrarTab(nombre) {
 
     if (nombre === 'dashboard') cargarDashboard();
     if (nombre === 'graficas') cargarGraficas();
-    if (nombre === 'eventos') cargarEventos();
-    // Consultorios vive ahora dentro de Configuración.
-    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarConsultorios(); }
+    // Consultorios y Eventos viven ahora dentro de Configuración.
+    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarConsultorios(); cargarEventos(); }
 
     // Terminales incluye la sección Pantallas; su auto-refresco corre solo con la pestaña activa.
     if (nombre === 'terminales') { cargarTerminales(); cargarPantallas(); iniciarAutoRefrescoPantallas(); }
