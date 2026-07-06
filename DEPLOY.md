@@ -83,3 +83,7 @@ Backup en Task Scheduler con el modo por defecto:
 
 > El display necesita el audio desbloqueado para los timbres; sin el flag de autoplay
 > (o sin la interacción inicial) el navegador silencia el sonido.
+
+---
+
+**Guía detallada de instalación en producción:** `docs/09_INSTALACION_SERVIDOR.md`.

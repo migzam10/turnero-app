@@ -1,5 +1,7 @@
 # 01 — Arquitectura y Stack Tecnológico
 
+> Última actualización: 2026-07-05
+
 ## Stack
 
 | Capa | Tecnología | Razón |
@@ -8,9 +10,10 @@
 | Tiempo real | Socket.io 4 | WebSockets bidireccionales; más maduro y con más casos de uso en producción que FastAPI WS |
 | Base de datos | **PostgreSQL 16** | Integridad referencial estricta, funciones de agregación para reportes de tiempos (T1→T5), soporte de concurrencia con múltiples terminales escribiendo simultáneamente |
 | ORM / Query | `pg` (node-postgres) | Driver nativo de PostgreSQL para Node.js, sin overhead de ORM |
-| Frontend (web) | HTML5 + CSS3 + Vanilla JS + Socket.io client | Sin framework, sin paso de build, fácil de desplegar y modificar |
-| Extensión | Chrome/Edge Manifest V3 | Lee DOM de Biofile sin modificarlo |
-| Sonido en TVs | Web Audio API | Sin dependencias externas |
+| Frontend (web) | HTML5 + CSS3 + Vanilla JS + Socket.io client | Sin framework, sin paso de build, fácil de desplegar y modificar. El panel Admin usa Chart.js y SheetJS por CDN (con degradación elegante si no cargan) |
+| Extensiones | Chrome/Edge Manifest V3 — **dos**: Biofile-Sync (lee la tabla de asignaciones) y Biofile-Injector (llena los campos de ingreso) | Leen/llenan el DOM de Biofile sin modificar el software |
+| Sonido en TVs | Web Audio API | Sin dependencias externas; overlay de activación + vigilante contra la política de autoplay |
+| Entornos | Desarrollo: Mac con Docker Compose · Producción: Windows Server 2019 **nativo** (PostgreSQL y Node como servicios) | Ver `DEPLOY.md` y `docs/09_INSTALACION_SERVIDOR.md` |
 
 ### Por qué PostgreSQL y no SQLite
 
@@ -65,80 +68,89 @@ Si el equipo tiene experiencia en Python/FastAPI, el cambio es viable — la arq
 ## Estructura de carpetas del proyecto
 
 ```
-turnero-server/
-├── server.js              ← Punto de entrada principal
-├── .env                   ← Variables de entorno (puerto, DB, etc.)
-├── package.json
-├── database/
-│   ├── schema.sql         ← Definición de tablas (PostgreSQL)
-│   ├── db.js              ← Pool de conexiones (node-postgres)
-│   └── migrate.js         ← Script para crear tablas al arrancar
-├── routes/
-│   ├── api.recepcion.js   ← Endpoints del módulo recepción
-│   ├── api.admisiones.js  ← Endpoints del módulo admisiones
-│   ├── api.profesional.js ← Endpoints del módulo profesional
-│   ├── api.extension.js   ← Endpoint que recibe datos de la extensión
-│   └── api.admin.js       ← Endpoints de configuración
-├── sockets/
-│   └── events.js          ← Todos los eventos de Socket.io
-├── public/
-│   ├── recepcion/
-│   │   └── index.html
-│   ├── admisiones/
-│   │   └── index.html
-│   ├── profesional/
-│   │   └── index.html
-│   ├── display/
-│   │   └── index.html
-│   ├── admin/
-│   │   └── index.html
-│   └── assets/
-│       ├── css/
-│       ├── js/
-│       └── sounds/        ← beep.mp3, chime.mp3
+turnero-app/
+├── docker-compose.yml       ← Entorno de desarrollo (Mac): db + app
+├── .env                     ← Variables de entorno (gitignored; ver .env.example)
+├── DEPLOY.md                ← Guía rápida de despliegue (detalle en docs/09)
+├── scripts/
+│   ├── backup-db.sh         ← Backup diario (dev Mac / Linux)
+│   └── backup-db.ps1        ← Backup diario (Windows Server, Task Scheduler)
+├── app/
+│   ├── server.js            ← Punto de entrada (Express + Socket.io + migración)
+│   ├── package.json
+│   ├── database/
+│   │   ├── schema.sql       ← Definición de tablas + migraciones idempotentes
+│   │   ├── db.js            ← Pool de conexiones (timezone America/Bogota por sesión)
+│   │   └── migrate.js       ← Ejecuta schema.sql en cada arranque
+│   ├── middleware/
+│   │   ├── adminAuth.js     ← Tokens de sesión admin + rate-limit del login
+│   │   └── validar.js       ← X-Terminal-Id y X-Extension-Secret
+│   ├── routes/
+│   │   ├── api.recepcion.js   ← Registro, edición, prioridad, eliminación
+│   │   ├── api.admisiones.js  ← Llamado en 2 tiempos, asignación manual
+│   │   ├── api.profesional.js ← Llamado (advisory lock, multipaciente), estados
+│   │   ├── api.extension.js   ← Sync de Biofile + reconciliación
+│   │   ├── api.admin.js       ← Login, config, consultorios, reportes, auditoría
+│   │   ├── api.config.js      ← Config pública (branding, sonido, duración)
+│   │   └── api.display.js     ← Estado de llamados activos (recuperación de TVs)
+│   ├── sockets/
+│   │   ├── events.js        ← join/heartbeat + relés de "sonar"
+│   │   └── notify.js        ← UPDATE_PATIENTS a las salas admin+profesional
+│   ├── utils/
+│   │   ├── audit.js         ← registrarEvento() → eventos_log (fire-and-forget)
+│   │   └── fecha.js         ← fechaHoyBogota()
+│   └── public/
+│       ├── index.html       ← Menú principal de módulos
+│       ├── branding.js      ← Título/logo personalizables en vivo
+│       ├── recepcion/ · admisiones/ · profesional/ · display/ · admin/
+│       └── (cada módulo es un index.html autocontenido, sin build)
 └── extension/
-    ├── manifest.json
-    ├── background.js      ← Service worker (alarma periódica)
-    ├── content.js         ← Script inyectado en AtencionesSeguimiento.aspx
-    └── popup.html         ← (solo estado/config de la extensión)
+    ├── Biofile-Sync/        ← Lee TbCitasAsignadas y sincroniza (config.js gitignored)
+    └── Biofile-Injector/    ← Llena el formulario de ingreso con los pendientes
 ```
 
 ## Flujo de datos en tiempo real (Socket.io)
 
-### Sala: `admisiones`
-- Todos los PC de admisiones se suscriben a `socket.join('admisiones')`.
-- Cuando llega nueva data de extensión (o nuevo paciente registrado en recepción): servidor emite `cola_actualizada` → todos los PCs de admisiones actualizan su lista.
+Cada terminal hace `join` con su tipo (`recepcion` | `admisiones` | `profesional` |
+`display` | `admin`) y un `terminalId` UUID persistido en localStorage (se registra en
+la tabla `terminales`; los profesionales además entran a `profesional:{NOMBRE}`).
 
-### Sala: `profesional:{loginName}`
-- Cada PC de profesional se suscribe a su propia sala: `socket.join('profesional:KENDY ZABALETA')`.
-- Cuando la extensión manda nuevas asignaciones para KENDY: servidor emite `asignaciones_actualizadas` solo a esa sala.
+| Sala | Eventos que recibe |
+|---|---|
+| `recepcion` | `paciente:nuevo`, `paciente:actualizado`, `paciente:prioridad`, `paciente:eliminado`, `admision:completada` |
+| `admisiones` | los anteriores + `admision:llamando`, `admision:devuelto`, `asignacion:manual` |
+| `profesional:{NOMBRE}` | `asignacion:llamando/en_atencion/finalizado/cancelado/reasignado/cancelado_manual/manual`, `extension:sync` |
+| `display` | `admision:llamando/completada/devuelto`, `asignacion:*`, `display:sonar`, `admision:sonar` |
+| `admin` + `profesional` | `UPDATE_PATIENTS` (tick genérico de "recargar", centralizado en `sockets/notify.js` — el panel Admin refresca el dashboard y los profesionales sus bloqueos cruzados) |
+| todas | `config:actualizada` (branding/parámetros en vivo), `consultorios:actualizados` |
 
-### Sala: `display`
-- Todos los displays (TVs) se suscriben a `socket.join('display')`.
-- Cuando cualquier profesional o admisiones cambia el estado de un paciente (llamando/en_atencion/finalizado): servidor emite `display_evento` → todas las TVs actualizan simultáneamente.
-
-### Sala: `admin`
-- Panel de administración recibe eventos de diagnóstico y configuración.
+Los clientes envían `heartbeat` cada 30 s (el display incluye `audioOk` para el
+monitoreo de pantallas) y los relés `display:sonar` / `admision:sonar` reenvían el
+timbre a las TVs.
 
 ## Configuración de terminales
 
 El terminal se identifica por un `terminalId` que se genera y guarda en `localStorage` la primera vez que abre cualquier módulo. Este ID se envía en cada conexión de Socket.io y en cada petición REST como header `X-Terminal-Id`.
 
 El módulo de profesional adicionalmente guarda en `localStorage`:
-- `consultorioNumero` → número/nombre del consultorio físico
-- `loginNameBiofile` → nombre del profesional (si no tiene extensión, se ingresa manualmente una vez)
+- `profesional_nombre` → nombre del profesional (con sugerencias del histórico; debe coincidir con Biofile)
+- `profesional_consultorio` → consultorio elegido del **catálogo administrable** (tabla `consultorios`)
+- `profesional_consultorio_multi` → si el consultorio es multipaciente (se revalida contra el catálogo al arrancar)
+
+El módulo de admisiones guarda `modulo_admisiones` (Módulo 1..N, cantidad configurable desde Admin).
 
 ## Configuración de las TVs
 
-**Opción recomendada (más económica y simple):**
-- 1 PC dedicado conectado a un **splitter HDMI 1×3** (o 1×4).
-- El splitter envía la misma señal a los 3 TVs simultáneamente.
-- El PC tiene Chrome/Edge en modo kiosco abriendo `http://localhost:3000/display` (la URL es local porque el servidor está en el mismo Windows Server).
-- Configurar Chrome en modo kiosco: `chrome.exe --kiosk http://localhost:3000/display`
+Las pantallas están dispersas en varias salas; cada una carga el display por su cuenta
+(los timbres suenan sincronizados porque todos reciben el mismo broadcast socket):
 
-**Opción alternativa (TVs con red):**
-- Si los TVs tienen puerto ethernet o WiFi (Smart TVs), cada TV abre `http://SERVER_IP:3000/display` en su browser nativo.
-- Si no son Smart TVs: conectar un Chromecast, Fire Stick, o mini PC por HDMI a cada TV.
+- **PC → HDMI (o splitter):** Chrome en kiosco con autoplay habilitado:
+  `chrome.exe --kiosk --autoplay-policy=no-user-gesture-required http://SERVER_IP:3000/display`
+- **Android TV cableada (recomendado):** Fully Kiosk Browser con *Autoplay Audio* y
+  *Launch on Boot*; o el navegador de fábrica (un OK del control activa el audio en el
+  overlay de arranque).
+- El estado de cada pantalla (en línea / audio) se monitorea desde
+  **Admin → Terminales → Pantallas**. Detalle completo en `docs/08_PANTALLA_TV.md`.
 
 ## Variables de entorno (.env)
 
@@ -157,20 +169,15 @@ DB_PASSWORD=CambiarPorPasswordSeguro
 
 ## Configuración automática al inicio
 
-Al arrancar el servidor por primera vez (`node server.js`), el script `database/migrate.js` se ejecuta automáticamente y:
-1. Se conecta a PostgreSQL con las credenciales del `.env`.
-2. Ejecuta `schema.sql` para crear todas las tablas (`CREATE TABLE IF NOT EXISTS`).
-3. Inserta datos iniciales si no existen: 3 módulos de admisiones, configuración básica.
+En **cada** arranque del servidor (`node server.js`), `database/migrate.js` ejecuta
+`schema.sql` completo: los `CREATE TABLE IF NOT EXISTS` y los `ALTER`/`DROP CONSTRAINT
+IF EXISTS` son idempotentes, así que actualizar el esquema = actualizar el código y
+reiniciar el proceso. También siembra la configuración inicial (`ON CONFLICT DO
+NOTHING`): cantidad de módulos de admisiones, clave del admin, sonido, duración del
+anuncio, título, etc.
 
 ## Arranque en Windows Server 2019
 
-Usar `pm2` para que el servidor corra como servicio de Windows y reinicie automáticamente:
-
-```powershell
-npm install -g pm2
-pm2 start server.js --name turnero
-pm2 startup
-pm2 save
-```
-
-Esto garantiza que el servidor se reinicie al encender el servidor o si el proceso falla.
+En producción la app corre como **servicio de Windows con NSSM** (reinicio automático
+al encender el servidor o si el proceso falla). Pasos completos, firewall, backups por
+Task Scheduler y checklist en `docs/09_INSTALACION_SERVIDOR.md`.
