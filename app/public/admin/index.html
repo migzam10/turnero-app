@@ -198,7 +198,7 @@ tr:hover td { background: #f8fafc; }
             <label style="font-size:.85rem;font-weight:600;color:var(--gris)">Hasta:</label>
             <input type="date" id="rep-hasta">
             <button class="btn-buscar" onclick="cargarReporte()">Generar reporte</button>
-            <button class="btn-exportar" onclick="exportarCSVReporte()">CSV</button>
+            <button class="btn-exportar" onclick="exportarExcelReporte()">Excel</button>
         </div>
         <div id="contenido-reporte"></div>
     </div>
@@ -353,9 +353,10 @@ tr:hover td { background: #f8fafc; }
 </div>
 </div><!-- /app-admin -->
 
-<!-- Chart.js por CDN: única dependencia externa. La lógica de gráficas degrada
-     elegantemente si no carga (ver cargarGraficas → typeof Chart). -->
+<!-- Chart.js y SheetJS por CDN. Ambos degradan elegantemente si no cargan:
+     gráficas (typeof Chart) y exportación Excel (typeof XLSX). -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/branding.js"></script>
 <script>
@@ -667,29 +668,52 @@ async function cargarReporte() {
     const desde = document.getElementById('rep-desde').value;
     const hasta = document.getElementById('rep-hasta').value;
     const el = document.getElementById('contenido-reporte');
-    el.innerHTML = '<div class="loader">Generando reporte...</div>';
 
-    if (desde === hasta) {
-        // Reporte detallado de un día
-        try {
-            const resp = await fetchAdmin(`/api/admin/reporte-detallado?fecha=${desde}`);
-            const data = await resp.json();
-            dataReporte = data;
-            el.innerHTML = renderReporteDetallado(data);
-        } catch {}
-    } else {
-        // Reporte rango
-        try {
-            const resp = await fetchAdmin(`/api/admin/reporte-rango?desde=${desde}&hasta=${hasta}`);
-            const data = await resp.json();
-            dataReporte = data;
-            el.innerHTML = renderReporteRango(data);
-        } catch {}
+    // Validación client-side (evita llamar al backend con rangos inválidos).
+    if (!desde || !hasta) { el.innerHTML = '<div class="loader">Seleccione la fecha desde y hasta.</div>'; return; }
+    if (desde > hasta) { el.innerHTML = '<div class="loader">El rango es inválido: "desde" debe ser anterior o igual a "hasta".</div>'; return; }
+    const spanDias = Math.round((new Date(hasta) - new Date(desde)) / 86400000) + 1;
+    if (spanDias > 31) { el.innerHTML = '<div class="loader">El rango máximo es de 31 días.</div>'; return; }
+
+    el.innerHTML = '<div class="loader">Generando reporte...</div>';
+    const multiDia = desde !== hasta;
+    try {
+        const resp = await fetchAdmin(`/api/admin/reporte-detallado?desde=${desde}&hasta=${hasta}`);
+        if (!resp.ok) {
+            const d = await resp.json().catch(() => ({}));
+            const msg = {
+                fecha_invalida: 'Fecha inválida.',
+                rango_invalido: 'El rango de fechas es inválido.',
+                rango_muy_grande: 'El rango máximo es de 31 días.'
+            }[d.error] || 'No se pudo generar el reporte.';
+            el.innerHTML = `<div class="loader">${msg}</div>`;
+            return;
+        }
+        const detallado = await resp.json();
+
+        // En rango de varios días se agrega el desglose por día (reporte-rango).
+        let rango = null;
+        if (multiDia) {
+            try {
+                const rresp = await fetchAdmin(`/api/admin/reporte-rango?desde=${desde}&hasta=${hasta}`);
+                if (rresp.ok) rango = await rresp.json();
+            } catch {}
+        }
+        dataReporte = { detallado, rango, multiDia };
+
+        let html = renderReporteDetallado(detallado, multiDia);
+        if (multiDia && rango) html += renderReporteRango(rango);
+        el.innerHTML = html;
+    } catch {
+        el.innerHTML = '<div class="loader">Error de conexión al generar el reporte.</div>';
     }
 }
 
-function renderReporteDetallado(data) {
+function renderReporteDetallado(data, multiDia) {
     const k = data.kpis || {};
+    // En rango multi-día, las tablas de detalle anteponen la columna Fecha.
+    const thFecha = multiDia ? '<th>Fecha</th>' : '';
+    const tdFecha = p => multiDia ? `<td>${esc(p.fecha)}</td>` : '';
     return `
         <div class="kpi-grid" style="margin-bottom:16px">
             <div class="kpi-card kpi-azul"><div class="kpi-num">${k.total_pacientes||0}</div><div class="kpi-label">Total pacientes</div></div>
@@ -717,22 +741,22 @@ function renderReporteDetallado(data) {
         <div class="seccion" style="margin-bottom:16px">
             <div class="seccion-header"><span class="seccion-titulo">Timeline T1T5 por paciente</span></div>
             <div class="tabla-wrapper"><table>
-                <thead><tr><th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Espera adm.</th><th>Registro</th><th>Min. total</th></tr></thead>
+                <thead><tr>${thFecha}<th>Cédula</th><th>Paciente</th><th>T1 Llegada</th><th>T2 Admisión</th><th>T3 1er Llamado</th><th>T4 1a Atención</th><th>T5 Último fin</th><th>Espera adm.</th><th>Registro</th><th>Min. total</th></tr></thead>
                 <tbody>${(data.timeline||[]).map(p => `
-                    <tr><td>${esc(p.cedula)}</td><td>${esc(p.paciente)}</td>
+                    <tr>${tdFecha(p)}<td>${esc(p.cedula)}</td><td>${esc(p.paciente)}</td>
                     <td>${horaFmt(p.t1_llegada)}</td><td>${horaFmt(p.t2_sistema)}</td>
                     <td>${horaFmt(p.t3_primer_llamado)}</td><td>${horaFmt(p.t4_primera_atencion)}</td>
                     <td>${horaFmt(p.t5_ultima_finalizacion)}</td>
                     <td>${p.min_espera_admision ? p.min_espera_admision + ' min' : '—'}</td>
                     <td>${p.min_registro ? p.min_registro + ' min' : '—'}</td>
                     <td>${p.min_tiempo_total_clinica ? p.min_tiempo_total_clinica + ' min' : '—'}</td></tr>
-                `).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                `).join('')||`<tr><td colspan="${multiDia ? 11 : 10}" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>`}</tbody>
             </table></div>
         </div>
         <div class="seccion">
             <div class="seccion-header"><span class="seccion-titulo">Reporte por admisión — Llegada · Llamado · Finalización</span></div>
             <div class="tabla-wrapper"><table>
-                <thead><tr><th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Origen</th><th>Estado</th><th>Admisionado</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
+                <thead><tr>${thFecha}<th>Cédula</th><th>Paciente</th><th>Profesional</th><th>Área</th><th>Origen</th><th>Estado</th><th>Admisionado</th><th>Hora llamado</th><th>Hora finalizado</th><th>Min. atención</th></tr></thead>
                 <tbody>${(data.asignaciones||[]).map(a => {
                     // Las bajas (estado 'cancelado') se atenúan y muestran el origen de la baja.
                     const esBaja = a.estado === 'cancelado';
@@ -741,7 +765,7 @@ function renderReporteDetallado(data) {
                         : a.estado;
                     return `
                     <tr${esBaja ? ' style="opacity:.55"' : ''}>
-                        <td>${esc(a.cedula)}</td>
+                        ${tdFecha(a)}<td>${esc(a.cedula)}</td>
                         <td>${esc(a.nombre)}</td>
                         <td>${esc(a.nombre_profesional)}</td>
                         <td>${esc(a.area)}</td>
@@ -752,7 +776,7 @@ function renderReporteDetallado(data) {
                         <td>${horaFmt(a.hora_finalizado)}</td>
                         <td>${a.min_atencion ? a.min_atencion + ' min' : '—'}</td>
                     </tr>`;
-                }).join('')||'<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>'}</tbody>
+                }).join('')||`<tr><td colspan="${multiDia ? 11 : 10}" style="text-align:center;padding:20px;color:var(--gris)">Sin datos</td></tr>`}</tbody>
             </table></div>
         </div>`;
 }
@@ -775,20 +799,85 @@ function renderReporteRango(data) {
     </div>`;
 }
 
-function exportarCSVReporte() {
-    if (!dataReporte) return;
-    let filas;
-    if (dataReporte.asignaciones) {
-        filas = [['Cedula','Paciente','Profesional','Area','Estado','Origen','Origen.Baja','Admisionado','Hora.Llamado','Hora.Finalizado','Min.Atencion']];
-        (dataReporte.asignaciones||[]).forEach(a => filas.push([a.cedula,a.nombre,a.nombre_profesional,a.area,a.estado,a.origen||'',a.origen_baja||'',horaFmt(a.hora_admisionado),horaFmt(a.hora_llamado),horaFmt(a.hora_finalizado),a.min_atencion||'']));
-    } else if (dataReporte.timeline) {
-        filas = [['Cedula','Paciente','T1','T2','T3','T4','T5','Espera.Adm','Registro','Min.Total']];
-        (dataReporte.timeline||[]).forEach(p => filas.push([p.cedula,p.paciente,horaFmt(p.t1_llegada),horaFmt(p.t2_sistema),horaFmt(p.t3_primer_llamado),horaFmt(p.t4_primera_atencion),horaFmt(p.t5_ultima_finalizacion),p.min_espera_admision||'',p.min_registro||'',p.min_tiempo_total_clinica||'']));
-    } else {
-        filas = [['Fecha','Profesional','Area','Atendidos','Cancelados','Particulares','Prom.Atencion','Espera.Adm','Registro']];
-        (dataReporte.datos||[]).forEach(r => filas.push([r.fecha,r.nombre_profesional,r.area,r.pacientes_atendidos||0,r.cancelados??0,r.particulares??0,r.avg_min_atencion||'',r.avg_espera_admision||'',r.avg_registro||'']));
+// Exporta el reporte a Excel (SheetJS por CDN), una hoja por sección. Los textos van
+// crudos: SheetJS los trata como datos, no como HTML (no se usa esc() aquí).
+function exportarExcelReporte() {
+    if (typeof XLSX === 'undefined') {
+        alert('No se pudo cargar el generador de Excel (se requiere internet la primera vez). Intente recargar la página.');
+        return;
     }
-    descargarCSV(filas, `reporte_${document.getElementById('rep-desde').value}_${document.getElementById('rep-hasta').value}.csv`);
+    if (!dataReporte) return;
+    const { detallado, rango, multiDia } = dataReporte;
+    const d = detallado || {};
+    const k = d.kpis || {};
+    const desde = document.getElementById('rep-desde').value;
+    const hasta = document.getElementById('rep-hasta').value;
+    const wb = XLSX.utils.book_new();
+
+    // 1. Resumen
+    const resumen = [
+        ['Rango', `${desde} – ${hasta}`],
+        ['Total pacientes', k.total_pacientes || 0],
+        ['Admisionados', k.admisionados || 0],
+        ['Espera admisión (min)', k.avg_espera_admision ?? ''],
+        ['Registro (min)', k.avg_registro ?? ''],
+        ['Prom. atención (min)', k.avg_tiempo_atencion_general ?? ''],
+        ['Particulares', k.particulares ?? 0],
+        ['Bajas LIS', k.bajas_lis ?? 0],
+        ['Bajas manual', k.bajas_manual ?? 0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
+
+    // 2. Por profesional
+    const porProf = [['Profesional','Área','Asignados','Atendidos','En proceso','Pendientes','Cancel. LIS','Cancel. Manual','Particulares','Prom. atención','Mín.','Máx.']];
+    (d.por_profesional || []).forEach(p => porProf.push([
+        p.nombre_profesional || '', p.area || '', p.asignados_activos ?? 0, p.finalizados || 0,
+        p.en_proceso || 0, p.pendientes || 0, p.cancelados_lis ?? 0, p.cancelados_manual ?? 0,
+        p.particulares ?? 0, p.avg_min_atencion ?? '', p.min_min_atencion ?? '', p.max_min_atencion ?? ''
+    ]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(porProf), 'Por profesional');
+
+    // 3. Timeline T1T5 (minutos como número, horas con horaFmt)
+    const tlHead = ['Cédula','Paciente','T1 Llegada','T2 Admisión','T3 1er Llamado','T4 1a Atención','T5 Último fin','Espera adm. (min)','Registro (min)','Min. total'];
+    if (multiDia) tlHead.unshift('Fecha');
+    const timeline = [tlHead];
+    (d.timeline || []).forEach(p => {
+        const row = [
+            p.cedula || '', p.paciente || '', horaFmt(p.t1_llegada), horaFmt(p.t2_sistema),
+            horaFmt(p.t3_primer_llamado), horaFmt(p.t4_primera_atencion), horaFmt(p.t5_ultima_finalizacion),
+            p.min_espera_admision ?? '', p.min_registro ?? '', p.min_tiempo_total_clinica ?? ''
+        ];
+        if (multiDia) row.unshift(p.fecha || '');
+        timeline.push(row);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(timeline), 'Timeline T1T5');
+
+    // 4. Por admisión
+    const paHead = ['Cédula','Paciente','Profesional','Área','Origen','Estado','Origen baja','Admisionado','Hora llamado','Hora finalizado','Min. atención'];
+    if (multiDia) paHead.unshift('Fecha');
+    const porAdm = [paHead];
+    (d.asignaciones || []).forEach(a => {
+        const row = [
+            a.cedula || '', a.nombre || '', a.nombre_profesional || '', a.area || '',
+            a.origen === 'manual' ? 'Particular' : 'Biofile', a.estado || '', a.origen_baja || '',
+            horaFmt(a.hora_admisionado), horaFmt(a.hora_llamado), horaFmt(a.hora_finalizado), a.min_atencion ?? ''
+        ];
+        if (multiDia) row.unshift(a.fecha || '');
+        porAdm.push(row);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(porAdm), 'Por admisión');
+
+    // 5. Por día (solo en rango multi-día con datos)
+    if (multiDia && rango && Array.isArray(rango.datos) && rango.datos.length) {
+        const porDia = [['Fecha','Profesional','Área','Atendidos','Cancelados','Particulares','Prom. atención','Espera adm.','Registro']];
+        rango.datos.forEach(r => porDia.push([
+            r.fecha || '', r.nombre_profesional || '', r.area || '', r.pacientes_atendidos || 0,
+            r.cancelados ?? 0, r.particulares ?? 0, r.avg_min_atencion ?? '', r.avg_espera_admision ?? '', r.avg_registro ?? ''
+        ]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(porDia), 'Por día');
+    }
+
+    XLSX.writeFile(wb, `reporte_${desde}_${hasta}.xlsx`);
 }
 
 // ── Gráficas (Chart.js por CDN, con degradación elegante) ─────

@@ -10,6 +10,15 @@ const router = Router();
 // Claves de configuración cuyo valor nunca debe exponerse al cliente.
 const CLAVES_SENSIBLES = new Set(['clave_admin']);
 
+// Valida que la fecha sea un día calendario real en formato YYYY-MM-DD
+// (mismo patrón que api.profesional.js / api.extension.js).
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+function fechaValida(f) {
+    if (typeof f !== 'string' || !FECHA_RE.test(f)) return false;
+    const d = new Date(`${f}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
+}
+
 // ── Autenticación ─────────────────────────────────────────────
 // Barrera de acceso al módulo Admin. La clave se almacena en la tabla de
 // configuración (clave 'clave_admin', valor por defecto '2026') y puede
@@ -449,10 +458,31 @@ router.get('/pacientes', async (req, res) => {
 // ── Reporte detallado T1→T5 ───────────────────────────────────
 
 router.get('/reporte-detallado', async (req, res) => {
-    const fecha = req.query.fecha || fechaHoyBogota();
+    // Rango [desde, hasta]. Compatibilidad: ?fecha= equivale a desde=hasta=fecha;
+    // sin parámetros → hoy (Bogotá).
+    let { desde, hasta } = req.query;
+    if (!desde && !hasta) {
+        desde = hasta = req.query.fecha || fechaHoyBogota();
+    } else {
+        desde = desde || hasta;
+        hasta = hasta || desde;
+    }
+    if (!fechaValida(desde) || !fechaValida(hasta)) {
+        return res.status(400).json({ error: 'fecha_invalida' });
+    }
+    if (desde > hasta) {
+        return res.status(400).json({ error: 'rango_invalido' });
+    }
+    // Span inclusivo en días; tope de 31.
+    const spanDias = Math.round((new Date(`${hasta}T00:00:00Z`) - new Date(`${desde}T00:00:00Z`)) / 86400000) + 1;
+    if (spanDias > 31) {
+        return res.status(400).json({ error: 'rango_muy_grande', max_dias: 31 });
+    }
+
     try {
         const { rows: timeline } = await query(
             `SELECT
+                pc.fecha,
                 pc.numero_identificacion AS cedula,
                 pc.primer_nombre || ' ' || pc.primer_apellido AS paciente,
                 pc.prioridad,
@@ -490,12 +520,12 @@ router.get('/reporte-detallado', async (req, res) => {
                 ) FILTER (WHERE ap.id IS NOT NULL), '[]') AS por_profesional
              FROM pacientes_cola pc
              LEFT JOIN asignaciones_profesionales ap ON ap.paciente_cola_id = pc.id
-             WHERE pc.fecha = $1
-             GROUP BY pc.id, pc.numero_identificacion, pc.primer_nombre,
+             WHERE pc.fecha BETWEEN $1 AND $2
+             GROUP BY pc.id, pc.fecha, pc.numero_identificacion, pc.primer_nombre,
                       pc.primer_apellido, pc.prioridad, pc.hora_llegada,
                       pc.hora_llamado_admision, pc.hora_admision
-             ORDER BY pc.hora_llegada`,
-            [fecha]
+             ORDER BY pc.fecha, pc.hora_llegada`,
+            [desde, hasta]
         );
 
         const { rows: porProfesional } = await query(
@@ -522,10 +552,10 @@ router.get('/reporte-detallado', async (req, res) => {
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
                 ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
-             WHERE ap.fecha = $1
+             WHERE ap.fecha BETWEEN $1 AND $2
              GROUP BY ap.nombre_profesional, ap.area
              ORDER BY ap.nombre_profesional`,
-            [fecha]
+            [desde, hasta]
         );
 
         const { rows: kpis } = await query(
@@ -543,13 +573,14 @@ router.get('/reporte-detallado', async (req, res) => {
                 COUNT(*) FILTER (WHERE ap.estado = 'cancelado' AND ap.origen_baja = 'manual') AS bajas_manual
              FROM pacientes_cola pc
              LEFT JOIN asignaciones_profesionales ap ON ap.paciente_cola_id = pc.id
-             WHERE pc.fecha = $1`,
-            [fecha]
+             WHERE pc.fecha BETWEEN $1 AND $2`,
+            [desde, hasta]
         );
 
         // Bug #12: detalle por admisión (una fila por asignación profesional)
         const { rows: asignaciones } = await query(
             `SELECT
+                ap.fecha,
                 ap.numero_identificacion AS cedula,
                 COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre,
                 ap.nombre_profesional,
@@ -572,12 +603,12 @@ router.get('/reporte-detallado', async (req, res) => {
                 END AS min_atencion
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
-             WHERE ap.fecha = $1
-             ORDER BY ap.nombre_profesional, ap.hora_llegada_biofile NULLS LAST, ap.created_at`,
-            [fecha]
+             WHERE ap.fecha BETWEEN $1 AND $2
+             ORDER BY ap.fecha, ap.nombre_profesional, ap.hora_llegada_biofile NULLS LAST, ap.created_at`,
+            [desde, hasta]
         );
 
-        return res.json({ fecha, kpis: kpis[0], timeline, por_profesional: porProfesional, asignaciones });
+        return res.json({ desde, hasta, fecha: desde, kpis: kpis[0], timeline, por_profesional: porProfesional, asignaciones });
     } catch (err) {
         console.error('[admin/reporte-detallado]', err);
         return res.status(500).json({ error: 'db_error' });
