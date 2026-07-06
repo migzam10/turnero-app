@@ -38,6 +38,9 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .panel-cola { flex: 1; padding: 16px 24px; overflow-y: auto; width: 100%; }
 .panel-titulo { font-weight: 700; color: var(--azul); font-size: .95rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .count-badge { background: var(--azul); color: white; font-size: .7rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; }
+/* Sección informativa "Admisionados hoy": título más discreto y badge gris. */
+.panel-titulo.panel-titulo-admis { margin-top: 24px; color: var(--gris); }
+.count-badge.count-badge-gris { background: var(--gris); }
 
 .pac-card { background: var(--card); border-radius: 12px; border: 1.5px solid var(--borde); padding: 18px 20px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 14px; transition: all .2s; }
 .pac-card:hover { border-color: #93c5fd; box-shadow: 0 2px 8px rgba(37,99,235,.08); }
@@ -369,23 +372,35 @@ function renderCola() {
     const bloquearLlamar = enProceso.length > 0 || llamadoEnCurso;
 
     const listaEl = document.getElementById('lista-espera');
-    if (!visibles.length) {
+
+    // Admisionados del día (sección informativa, solo lectura), más reciente primero.
+    const admisionados = colaActual
+        .filter(p => p.estado_admision === 'admisionado')
+        .sort((a, b) => new Date(b.hora_admision || 0) - new Date(a.hora_admision || 0));
+
+    // Filtro client-side por nombre o cédula. Se aplica por igual a la cola y a los
+    // admisionados (útil para responder "¿ya se admisionó fulano?").
+    const q = filtroCola.trim().toLowerCase();
+    const coincide = p =>
+        (p.nombre_completo || '').toLowerCase().includes(q) ||
+        String(p.numero_identificacion || '').toLowerCase().includes(q);
+    const mostrados = q ? visibles.filter(coincide) : visibles;
+    const admisionadosMostrados = q ? admisionados.filter(coincide) : admisionados;
+
+    // Nada que mostrar: ni cola ni admisionados del día.
+    if (!visibles.length && !admisionados.length) {
         listaEl.innerHTML = '<div class="vacia">No hay pacientes en espera</div>';
         return;
     }
-
-    // Filtro client-side por nombre o cédula (afecta las tarjetas, no el contador).
-    const q = filtroCola.trim().toLowerCase();
-    const mostrados = q ? visibles.filter(p =>
-        (p.nombre_completo || '').toLowerCase().includes(q) ||
-        String(p.numero_identificacion || '').toLowerCase().includes(q)) : visibles;
-
-    if (!mostrados.length) {
+    // Búsqueda sin coincidencias en ninguna de las dos listas.
+    if (q && !mostrados.length && !admisionadosMostrados.length) {
         listaEl.innerHTML = '<div class="vacia">Sin coincidencias</div>';
         return;
     }
 
-    listaEl.innerHTML = mostrados.map(p => {
+    // Parte superior: cola en proceso/espera. Si no hay (o no coinciden) pero sí hay
+    // admisionados, un aviso compacto encabeza la sección informativa de abajo.
+    const htmlCola = mostrados.length ? mostrados.map(p => {
         const otro = esOtroModulo(p);
         const llamando = p.estado_admision === 'llamando_admision' && !otro;
         const admisionando = p.estado_admision === 'admisionando' && !otro;
@@ -429,7 +444,30 @@ function renderCola() {
             </div>
             <div class="pac-btns">${botones}</div>
         </div>`;
-    }).join('');
+    }).join('') : '<div class="vacia" style="padding:24px 16px">No hay pacientes en espera</div>';
+
+    // Parte inferior: "Admisionados hoy" (informativo). Tarjeta atenuada, sin botones,
+    // con el módulo que lo admisionó y sus horas de llegada/admisión.
+    let htmlAdmis = '';
+    if (admisionadosMostrados.length) {
+        htmlAdmis = `<div class="panel-titulo panel-titulo-admis">Admisionados hoy <span class="count-badge count-badge-gris">${admisionadosMostrados.length}</span></div>`
+            + admisionadosMostrados.map(p => {
+                const horaLlegada = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                const horaAdmision = p.hora_admision ? new Date(p.hora_admision).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                const sub = [esc(p.numero_identificacion), horaLlegada && `Llegó ${horaLlegada}`, horaAdmision && `Admisionado ${horaAdmision}`].filter(Boolean).join(' · ');
+                return `<div class="pac-card atenuado">
+                    <div class="pac-top">
+                        <div class="pri-dot pri-${esc(p.prioridad)}"></div>
+                        <div class="pac-info">
+                            <div class="pac-nombre">${esc(p.nombre_completo)}<span class="badge-otro">${esc(p.modulo_admision || '—')}</span></div>
+                            <div class="pac-sub">${sub}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+    }
+
+    listaEl.innerHTML = htmlCola + htmlAdmis;
 }
 
 // Filtro de búsqueda: actualiza el texto y re-renderiza (no afecta el contador total).

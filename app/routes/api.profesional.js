@@ -15,8 +15,9 @@ function fechaValida(f) {
 }
 
 // GET /api/profesional/asignaciones?profesional=KENDY+ZABALETA[&fecha=YYYY-MM-DD]
-// Sin fecha → día actual (vista en vivo, oculta finalizados).
-// Con fecha pasada → historial completo de ese día (incluye finalizados).
+// Sin fecha → día actual; con fecha pasada → historial de ese día. En ambos casos
+// se devuelven también los finalizados (la vista en vivo los muestra al final, en
+// la sección "Atendidos hoy"); el orden fino de esa sección lo hace el frontend.
 router.get('/asignaciones', validarTerminalId, async (req, res) => {
     const { profesional, fecha } = req.query;
     if (!profesional) {
@@ -61,9 +62,9 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
              WHERE ap.fecha = COALESCE($2::date, CURRENT_DATE)
                AND ap.nombre_profesional = $1
                AND ap.activo = true
-               AND (ap.estado <> 'finalizado' OR COALESCE($2::date, CURRENT_DATE) <> CURRENT_DATE)
              ORDER BY
-                 CASE ap.estado WHEN 'en_atencion' THEN 1 WHEN 'llamando' THEN 2 ELSE 3 END,
+                 CASE ap.estado WHEN 'en_atencion' THEN 1 WHEN 'llamando' THEN 2
+                                WHEN 'finalizado' THEN 4 ELSE 3 END,
                  CASE COALESCE(pc.prioridad,'normal') WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
                  ap.hora_llegada_biofile`,
             [profesional, fechaParam]

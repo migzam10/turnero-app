@@ -62,6 +62,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .pac-card { background: var(--card); border-radius: 10px; border: 1.5px solid var(--borde); padding: 14px; margin-bottom: 10px; transition: all .2s; }
 .pac-card.estado-en_atencion { border-color: var(--azul2); background: #f0f7ff; }
 .pac-card.estado-llamando { border-color: var(--naranja); background: #fffbeb; }
+.pac-card.estado-finalizado { opacity: .75; }
 .pac-card.bloqueado { opacity: .65; }
 
 .pac-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -220,10 +221,9 @@ let timerReloj = null;
 let listadoProfesionalesCache = null;
 let listadoProfesionalesTs = 0;
 let contadorFinalizado = 0;
-// P1: conteo real de finalizados de HOY (del endpoint resumen-hoy; el array en vivo no
-// los incluye). P3: ids pendientes de la carga anterior (null = primera carga, sin beep)
-// y contexto de audio reutilizado para el beep de aviso.
-let finalizadosHoy = 0;
+// P3: ids pendientes de la carga anterior (null = primera carga, sin beep) y contexto de
+// audio reutilizado para el beep de aviso. El conteo de finalizados de HOY ya viene en el
+// mismo listado de asignaciones, así que se cuenta del array (sin fetch aparte).
 let idsPendientesPrev = null;
 let audioCtxProf = null;
 // P4: id de la asignación a reasignar y opciones (profesionales de hoy, sin el actual).
@@ -450,15 +450,6 @@ async function cargarAsignaciones() {
         asignaciones = await resp.json();
 
         if (!esHistorial) {
-            // P1: el conteo real de finalizados de HOY viene del endpoint (el array en vivo
-            // los excluye). Si falla, se conserva el valor anterior.
-            try {
-                const rf = await fetch(`/api/profesional/resumen-hoy?profesional=${encodeURIComponent(profesionalActual)}`, {
-                    headers: { 'X-Terminal-Id': TERMINAL_ID }
-                });
-                const rd = await rf.json();
-                if (rd && typeof rd.finalizados === 'number') finalizadosHoy = rd.finalizados;
-            } catch {}
             // P3: beep + parpadeo del título si aparece un pendiente nuevo (no en la 1a carga).
             detectarPacienteNuevo();
         }
@@ -512,16 +503,18 @@ function renderAsignaciones() {
     const llamando = asignaciones.filter(a => a.estado === 'llamando');
     const enAtencion = asignaciones.filter(a => a.estado === 'en_atencion');
     const finalizados = asignaciones.filter(a => a.estado === 'finalizado');
+    // Más reciente primero: los últimos atendidos quedan arriba de la sección.
+    finalizados.sort((a, b) => new Date(b.hora_finalizado || 0) - new Date(a.hora_finalizado || 0));
 
-    // En vista de HOY el conteo de finalizados lo tiene el endpoint (finalizadosHoy);
-    // en historial se cuenta del array (que sí incluye finalizados).
+    // El listado ya incluye los finalizados del día, así que el conteo sale del array
+    // tanto en vivo como en historial. esHistorial solo cambia el título de la sección.
     const fechaSel = document.getElementById('filtro-fecha').value || '';
     const esHistorial = fechaSel && fechaSel !== fechaHoyLocal();
 
     document.getElementById('cnt-pendiente').textContent = pendientes.length;
     document.getElementById('cnt-llamando').textContent = llamando.length;
     document.getElementById('cnt-atencion').textContent = enAtencion.length;
-    document.getElementById('cnt-finalizado').textContent = esHistorial ? finalizados.length : finalizadosHoy;
+    document.getElementById('cnt-finalizado').textContent = finalizados.length;
 
     if (!asignaciones.length) {
         lista.innerHTML = '<div class="vacia"><div style="font-size:2.5rem;margin-bottom:12px"></div>Sin asignaciones por el momento.<br><span style="font-size:.82rem">Se actualizará automáticamente cuando Biofile sincronice.</span></div>';
@@ -545,9 +538,10 @@ function renderAsignaciones() {
         secciones.push(`<div class="seccion-titulo" style="margin-top:14px">Pendientes (${pendientes.length})</div>`);
         secciones.push(pendientes.map(a => renderCard(a)).join(''));
     }
-    // Finalizados (solo aparecen al consultar el historial de días anteriores)
+    // Atendidos hoy (en vivo) / Finalizados (al consultar días anteriores).
     if (finalizados.length) {
-        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">Finalizados (${finalizados.length})</div>`);
+        const tituloFin = esHistorial ? 'Finalizados' : 'Atendidos hoy';
+        secciones.push(`<div class="seccion-titulo" style="margin-top:14px">${tituloFin} (${finalizados.length})</div>`);
         secciones.push(finalizados.map(a => renderCard(a)).join(''));
     }
 
@@ -575,6 +569,16 @@ function renderCard(a) {
     const tiempoFinalizado = a.hora_finalizado
         ? new Date(a.hora_finalizado).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
         : null;
+    // "Atendido" (hora de inicio de atención) y los minutos de atención se muestran SOLO en
+    // las tarjetas finalizadas, para no recargar las tarjetas activas.
+    const tiempoEnAtencion = a.hora_en_atencion
+        ? new Date(a.hora_en_atencion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        : null;
+    let minAtencionStr = '';
+    if (a.estado === 'finalizado' && a.hora_en_atencion && a.hora_finalizado) {
+        const mins = Math.max(0, Math.round((new Date(a.hora_finalizado) - new Date(a.hora_en_atencion)) / 60000));
+        minAtencionStr = `<span>${mins} min de atención</span>`;
+    }
 
     let timerStr = '';
     if (a.estado === 'en_atencion' && a.hora_en_atencion) {
@@ -609,7 +613,7 @@ function renderCard(a) {
         botones = `<button class="btn-accion btn-finalizar" onclick="accion('finalizar','${a.id}')">Finalizar</button>`;
     }
 
-    return `<div class="pac-card estado-${a.estado}${a.bloqueado && a.estado === 'pendiente' ? ' bloqueado' : ''}">
+    return `<div class="pac-card estado-${a.estado}${a.bloqueado && a.estado === 'pendiente' ? ' bloqueado' : ''}" data-id="${a.id}">
         <div class="pac-top">
             <span class="pri-badge pri-${a.prioridad || 'normal'}">${(a.prioridad || 'normal').toUpperCase()}</span>
             <span class="pac-nombre">${esc(nombreStr)}</span>
@@ -621,7 +625,9 @@ function renderCard(a) {
             <span>CC ${esc(a.numero_identificacion)}</span>
             ${tiempoLlegadaFisica ? `<span>Llegó: ${tiempoLlegadaFisica}</span>` : ''}
             ${tiempoAdmisionBiofile ? `<span>Admisionado: ${tiempoAdmisionBiofile}</span>` : ''}
+            ${a.estado === 'finalizado' && tiempoEnAtencion ? `<span>Atendido: ${tiempoEnAtencion}</span>` : ''}
             ${tiempoFinalizado ? `<span>Finalizado: ${tiempoFinalizado}</span>` : ''}
+            ${minAtencionStr}
         </div>
         ${bloqueoBanner}
         <div class="pac-btns">${botones}</div>
@@ -644,7 +650,13 @@ async function accion(tipo, id) {
             }
             cargarAsignaciones();
         } else {
-            cargarAsignaciones();
+            await cargarAsignaciones();
+            // Solo al llamar: con listas largas la tarjeta salta a "Llamando" (arriba) pero
+            // el scroll queda abajo. La traemos a la vista para que se vean sus botones.
+            if (tipo === 'llamar') {
+                document.querySelector(`.pac-card[data-id="${id}"]`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
     } catch {}
 }
