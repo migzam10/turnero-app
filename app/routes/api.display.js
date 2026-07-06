@@ -12,7 +12,8 @@ router.get('/activos', async (req, res) => {
     try {
         const { rows: admisiones } = await query(
             `SELECT id, modulo_admision,
-                    primer_nombre || ' ' || primer_apellido AS nombre_paciente
+                    primer_nombre || ' ' || COALESCE(segundo_nombre || ' ','') ||
+                    primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_paciente
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
                AND estado_admision = 'llamando_admision'

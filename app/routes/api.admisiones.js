@@ -10,6 +10,9 @@ const router = Router();
 const nombrePac = (r) => `${r.primer_nombre || ''} ${r.primer_apellido || ''}`.trim() || r.numero_identificacion;
 
 // GET /api/admisiones/cola
+// Devuelve la cola en curso más los ya 'admisionado' del día: el frontend separa
+// la sección informativa de admisionados (con módulo y hora de admisión) por su
+// cuenta; por eso el SELECT incluye hora_llamado_admision y hora_admision.
 router.get('/cola', validarTerminalId, async (req, res) => {
     try {
         const { rows } = await query(
@@ -18,10 +21,11 @@ router.get('/cola', validarTerminalId, async (req, res) => {
                     primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_completo,
                     primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
                     ciudad_expedicion, tipo_identificacion, fecha_nacimiento,
-                    prioridad, estado_admision, hora_llegada, modulo_admision
+                    prioridad, estado_admision, hora_llegada, modulo_admision,
+                    hora_llamado_admision, hora_admision
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
-               AND estado_admision IN ('esperando','llamando_admision','admisionando')
+               AND estado_admision IN ('esperando','llamando_admision','admisionando','admisionado')
              ORDER BY
                  CASE prioridad WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,
                  hora_llegada`

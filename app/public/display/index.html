@@ -1,709 +1,987 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pantalla TV — Turnero CertiMedic</title>
-<style>
-:root {
-    --fondo: #eef2f7;
-    --card: #ffffff;
-    --card2: #f4f7fc;
-    --azul: #1e40af;
-    --azul-lt: #dbeafe;
-    --verde: #16a34a;
-    --naranja: #d97706;
-    --borde: #dde3ed;
-    --texto: #0f172a;
-    --texto2: #475569;
-    --header: #1e3a6e;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; }
-body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var(--texto); display: flex; flex-direction: column; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="only light">
+    <title>Pantalla TV — Turnero CertiMedic</title>
+    <style>
+        :root {
+            color-scheme: only light;
+            --fondo: #eef2f7;
+            --card: #ffffff;
+            --card2: #f4f7fc;
+            --azul: #1e40af;
+            --azul-lt: #dbeafe;
+            --verde: #16a34a;
+            --naranja: #d97706;
+            --borde: #dde3ed;
+            --texto: #0f172a;
+            --texto2: #475569;
+            --header: #1e3a6e;
+        }
 
-/* Header */
-.header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid rgba(0,0,0,.1); background: var(--header); flex-shrink: 0; }
-.logo { font-size: 1rem; font-weight: 800; color: #93c5fd; letter-spacing: .02em; }
-.header-right { display: flex; align-items: center; gap: 16px; font-size: .85rem; color: rgba(255,255,255,.7); }
-#reloj-display { font-size: 1.1rem; font-weight: 700; color: white; }
-.dot-ws { width: 8px; height: 8px; border-radius: 50%; background: #4a5568; }
-.dot-ws.ok { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-/* Layout principal: tres columnas */
-.layout { flex: 1; display: grid; grid-template-columns: 340px 1fr 340px; gap: 1px; background: var(--borde); overflow: hidden; }
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
 
-/* Columnas laterales */
-.col-lateral { background: var(--card); padding: 16px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.col-titulo { font-size: 1rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--texto2); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--borde); }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--fondo);
+            color: var(--texto);
+            display: flex;
+            flex-direction: column;
+        }
 
-/* Tarjeta de consultorio / módulo */
-.item-card { background: var(--card2); border-radius: 10px; padding: 12px 14px; margin-bottom: 6px; border: 1.5px solid var(--borde); box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: all .4s; }
-.item-card.activo { border-color: var(--azul); background: var(--azul-lt); box-shadow: 0 2px 8px rgba(30,64,175,.12); }
-.item-card.libre { opacity: .45; }
-.item-num { font-size: .82rem; font-weight: 700; color: var(--texto2); text-transform: uppercase; margin-bottom: 3px; }
-.item-nombre { font-size: 1rem; font-weight: 700; color: var(--texto); white-space: normal; overflow-wrap: break-word; line-height: 1.25; }
-.item-nombre.libre { font-size: .85rem; color: #94a3b8; font-style: italic; }
-.item-pro { font-size: .72rem; color: var(--texto2); margin-top: 3px; white-space: normal; overflow-wrap: break-word; }
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, .1);
+            background: var(--header);
+            flex-shrink: 0;
+        }
 
-/* Animación sonar */
-@keyframes sonandoPulso {
-    0%, 100% { border-color: var(--azul); background: var(--azul-lt); }
-    50% { border-color: #3b82f6; background: #bfdbfe; box-shadow: 0 0 20px rgba(30,64,175,.4); transform: scale(1.03); }
-}
-.item-card.sonando { animation: sonandoPulso .6s ease-in-out 3; }
+        .logo {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #93c5fd;
+            letter-spacing: .02em;
+        }
 
-/* Centro - llamado actual */
-.col-centro { background: var(--fondo); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; position: relative; }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: .85rem;
+            color: rgba(255, 255, 255, .7);
+        }
 
-/* Animación de llamado */
-.llamado-container { display: flex; flex-direction: column; align-items: center; gap: 16px; animation: fadeIn .4s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
-@keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
-.llamado-etiqueta { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; color: var(--texto2); }
-.llamado-nombre { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; color: var(--texto); line-height: 1.1; animation: pulso 2s ease-in-out infinite; }
-.llamado-destino { font-size: 2rem; color: var(--azul); font-weight: 700; }
-.llamado-tipo-badge { font-size: .75rem; padding: 4px 14px; border-radius: 99px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
-.badge-admision { background: rgba(217,119,6,.12); color: #92400e; border: 1.5px solid var(--naranja); }
-.badge-profesional { background: rgba(30,64,175,.1); color: var(--azul); border: 1.5px solid var(--azul); }
+        #reloj-display {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: white;
+        }
 
-/* Cola de espera en centro */
-.cola-siguiente { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.sig-item { background: rgba(30,64,175,.07); border: 1px solid var(--borde); border-radius: 6px; padding: 4px 12px; font-size: .72rem; color: var(--texto2); }
+        .dot-ws {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4a5568;
+        }
 
-/* Sin llamados */
-.sin-llamado { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.sin-llamado-icono { font-size: 5rem; }
-/* La campana por defecto y el texto van atenuados; un logo cargado se ve nítido. */
-.sin-llamado-icono [data-logo-default] { opacity: .25; }
-.sin-llamado-txt { font-size: 1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--texto); opacity: .25; }
+        .dot-ws.ok {
+            background: #4ade80;
+            box-shadow: 0 0 6px #4ade80;
+        }
 
-/* Barra de progreso del llamado */
-.progreso-bar { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--azul); transition: width linear; border-radius: 0 3px 0 0; }
-</style>
+        /* Layout principal: tres columnas */
+        .layout {
+            flex: 1;
+            display: grid;
+            grid-template-columns: clamp(220px, 15vw, 300px) 1fr clamp(220px, 15vw, 300px);
+            gap: 1px;
+            background: var(--borde);
+            overflow: hidden;
+        }
+
+        /* Columnas laterales */
+        .col-lateral {
+            background: var(--card);
+            padding: 16px 12px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .col-titulo {
+            font-size: 1rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            color: var(--texto2);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--borde);
+        }
+
+        /* Tarjeta de consultorio / módulo */
+        .item-card {
+            background: var(--card2);
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border: 1.5px solid var(--borde);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+            transition: all .4s;
+        }
+
+        .item-card.activo {
+            border-color: var(--azul);
+            background: var(--azul-lt);
+            box-shadow: 0 2px 8px rgba(30, 64, 175, .12);
+        }
+
+        .item-card.libre {
+            opacity: .45;
+        }
+
+        .item-num {
+            font-size: .82rem;
+            font-weight: 700;
+            color: var(--texto2);
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+
+        .item-nombre {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--texto);
+            white-space: normal;
+            overflow-wrap: break-word;
+            line-height: 1.25;
+        }
+
+        .item-nombre.libre {
+            font-size: .85rem;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .item-pro {
+            font-size: .72rem;
+            color: var(--texto2);
+            margin-top: 3px;
+            white-space: normal;
+            overflow-wrap: break-word;
+        }
+
+        /* Animación sonar */
+        @keyframes sonandoPulso {
+
+            0%,
+            100% {
+                border-color: var(--azul);
+                background: var(--azul-lt);
+            }
+
+            50% {
+                border-color: #3b82f6;
+                background: #bfdbfe;
+                box-shadow: 0 0 20px rgba(30, 64, 175, .4);
+                transform: scale(1.03);
+            }
+        }
+
+        .item-card.sonando {
+            animation: sonandoPulso .6s ease-in-out 3;
+        }
+
+        /* Centro - llamado actual */
+        .col-centro {
+            background: var(--fondo);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            text-align: center;
+            position: relative;
+        }
+
+        /* Animación de llamado */
+        .llamado-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            animation: fadeIn .4s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes pulso {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.03);
+            }
+        }
+
+        .llamado-etiqueta {
+            font-size: .78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .18em;
+            color: var(--texto2);
+        }
+
+        .llamado-nombre {
+            font-size: clamp(2rem, 5vw, 3.6rem);
+            font-weight: 900;
+            color: var(--texto);
+            line-height: 1.1;
+            animation: pulso 2s ease-in-out infinite;
+        }
+
+        .llamado-destino {
+            font-size: 2rem;
+            color: var(--azul);
+            font-weight: 700;
+        }
+
+        .llamado-tipo-badge {
+            font-size: .75rem;
+            padding: 4px 14px;
+            border-radius: 99px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+        }
+
+        .badge-admision {
+            background: rgba(217, 119, 6, .12);
+            color: #92400e;
+            border: 1.5px solid var(--naranja);
+        }
+
+        .badge-profesional {
+            background: rgba(30, 64, 175, .1);
+            color: var(--azul);
+            border: 1.5px solid var(--azul);
+        }
+
+        /* Cola de espera en centro */
+        .cola-siguiente {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .sig-item {
+            background: rgba(30, 64, 175, .07);
+            border: 1px solid var(--borde);
+            border-radius: 6px;
+            padding: 4px 12px;
+            font-size: .72rem;
+            color: var(--texto2);
+        }
+
+        /* Sin llamados */
+        .sin-llamado {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sin-llamado-icono {
+            font-size: 5rem;
+        }
+
+        /* La campana por defecto y el texto van atenuados; un logo cargado se ve nítido. */
+        .sin-llamado-icono [data-logo-default] {
+            opacity: .25;
+        }
+
+        .sin-llamado-txt {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--texto);
+            opacity: .25;
+        }
+
+        /* Barra de progreso del llamado */
+        .progreso-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: var(--azul);
+            transition: width linear;
+            border-radius: 0 3px 0 0;
+        }
+    </style>
 </head>
+
 <body>
 
-<!-- Overlay de activación de audio: la política de autoplay arranca el AudioContext
+    <!-- Overlay de activación de audio: la política de autoplay arranca el AudioContext
      'suspended'; el primer gesto (OK del control o toque) lo reanuda. -->
-<div id="overlay-audio" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--header);color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;padding:32px">
-    <div style="font-size:6.5rem;line-height:1">🔔</div>
-    <div style="font-size:1.7rem;font-weight:800;max-width:80%;line-height:1.3">Presione OK en el control o toque la pantalla para iniciar</div>
-</div>
-
-<!-- Banner de alerta: sonido bloqueado pese a estar habilitado. Imposible de ignorar. -->
-<div id="banner-audio" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#dc2626;color:#fff;font-size:1.3rem;font-weight:800;text-align:center;padding:14px 20px;letter-spacing:.02em">🔇 SONIDO DESACTIVADO — presione OK en el control o toque la pantalla</div>
-
-<div class="header">
-    <div class="logo" id="logo-display" data-titulo-base="" style="cursor:default">TURNERO CERTIMEDIC</div>
-    <div class="header-right">
-        <span id="reloj-display">--:--:--</span>
-        <div class="dot-ws" id="dot-ws"></div>
-    </div>
-</div>
-
-<div class="layout">
-    <!-- Consultorios -->
-    <div class="col-lateral" id="col-consultorios">
-        <div class="col-titulo">Consultorios</div>
-        <div id="lista-consultorios"></div>
+    <div id="overlay-audio"
+        style="display:none;position:fixed;inset:0;z-index:9999;background:var(--header);color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;padding:32px">
+        <div style="font-size:6.5rem;line-height:1">🔔</div>
+        <div style="font-size:1.7rem;font-weight:800;max-width:80%;line-height:1.3">Presione OK en el control o toque la
+            pantalla para iniciar</div>
     </div>
 
-    <!-- Centro -->
-    <div class="col-centro" id="col-centro">
-        <div class="sin-llamado" id="sin-llamado">
-            <div class="sin-llamado-icono" data-display-logo>
-                <span data-logo-default>
-                    <svg width="90" height="90" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22zm7.2-5.6v-5.4c0-3.43-2.04-6.3-5.1-6.97V3a1.9 1.9 0 0 0-3.8 0v1.03C7.24 4.7 5.2 7.57 5.2 11v5.4L3.2 18.4v.4h17.6v-.4z"/>
-                    </svg>
-                </span>
-                <img data-logo-img alt="Logo" style="display:none; max-width:220px; max-height:220px; object-fit:contain;">
-            </div>
-            <div class="sin-llamado-txt">En espera</div>
+    <!-- Banner de alerta: sonido bloqueado pese a estar habilitado. Imposible de ignorar. -->
+    <div id="banner-audio"
+        style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#dc2626;color:#fff;font-size:1.3rem;font-weight:800;text-align:center;padding:14px 20px;letter-spacing:.02em">
+        🔇 SONIDO DESACTIVADO — presione OK en el control o toque la pantalla</div>
+
+    <div class="header">
+        <div class="logo" id="logo-display" data-titulo-base="" style="cursor:default">TURNERO CERTIMEDIC</div>
+        <div class="header-right">
+            <span id="debug-viewport" style="display:none"></span>
+            <span id="reloj-display">--:--:--</span>
+            <div class="dot-ws" id="dot-ws"></div>
         </div>
-        <div class="llamado-container" id="llamado-actual" style="display:none"></div>
-        <div class="progreso-bar" id="progreso-bar" style="width:0"></div>
-        <div class="cola-siguiente" id="cola-siguiente"></div>
     </div>
 
-    <!-- Módulos admisiones -->
-    <div class="col-lateral" id="col-admisiones">
-        <div class="col-titulo">Admisiones</div>
-        <div id="lista-modulos"></div>
+    <div class="layout">
+        <!-- Consultorios -->
+        <div class="col-lateral" id="col-consultorios">
+            <div class="col-titulo">Consultorios</div>
+            <div id="lista-consultorios"></div>
+        </div>
+
+        <!-- Centro -->
+        <div class="col-centro" id="col-centro">
+            <div class="sin-llamado" id="sin-llamado">
+                <div class="sin-llamado-icono" data-display-logo>
+                    <span data-logo-default>
+                        <svg width="90" height="90" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path
+                                d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22zm7.2-5.6v-5.4c0-3.43-2.04-6.3-5.1-6.97V3a1.9 1.9 0 0 0-3.8 0v1.03C7.24 4.7 5.2 7.57 5.2 11v5.4L3.2 18.4v.4h17.6v-.4z" />
+                        </svg>
+                    </span>
+                    <img data-logo-img alt="Logo"
+                        style="display:none; max-width:220px; max-height:220px; object-fit:contain;">
+                </div>
+                <div class="sin-llamado-txt">En espera</div>
+            </div>
+            <div class="llamado-container" id="llamado-actual" style="display:none"></div>
+            <div class="progreso-bar" id="progreso-bar" style="width:0"></div>
+            <div class="cola-siguiente" id="cola-siguiente"></div>
+        </div>
+
+        <!-- Módulos admisiones -->
+        <div class="col-lateral" id="col-admisiones">
+            <div class="col-titulo">Admisiones</div>
+            <div id="lista-modulos"></div>
+        </div>
     </div>
-</div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script src="/branding.js"></script>
-<script>
-// ── Reloj ───────────────────────────────────────────────────────
-function actualizarReloj() {
-    document.getElementById('reloj-display').textContent = new Date().toLocaleTimeString('es-CO');
-}
-setInterval(actualizarReloj, 1000);
-actualizarReloj();
-
-// "Salir" vuelve al menú principal. Ya no hay botón visible: se accede con triple-click
-// en el logo, para que pacientes/curiosos no puedan sacar la TV del modo display.
-function salir() {
-    window.location.href = '/';
-}
-
-// Triple-click en el logo dentro de una ventana de 600 ms → salir().
-(() => {
-    const logo = document.getElementById('logo-display');
-    if (!logo) return;
-    let clicks = 0, resetTimer = null;
-    logo.addEventListener('click', () => {
-        clicks++;
-        clearTimeout(resetTimer);
-        if (clicks >= 3) { clicks = 0; salir(); return; }
-        resetTimer = setTimeout(() => { clicks = 0; }, 600);
-    });
-})();
-
-// Escapa texto dinámico antes de inyectarlo en innerHTML (el nombre del consultorio
-// proviene del catálogo administrable, así que puede contener caracteres especiales).
-function escHtml(v) {
-    return String(v ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-// Identificador persistente de esta terminal (UUID). Necesario para que el backend
-// registre la pantalla en 'terminales' y acepte sus heartbeats. Mismo patrón que Profesional.
-const TERMINAL_ID = (() => {
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let id = localStorage.getItem('terminal_id');
-    if (!id || !UUID_RE.test(id)) {
-        id = crypto.randomUUID
-            ? crypto.randomUUID()
-            : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-                (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
-        localStorage.setItem('terminal_id', id);
-    }
-    return id;
-})();
-
-// ── Estado del display ──────────────────────────────────────────
-const estado = {
-    consultorios: {}, // indexado por id de asignación → { id, profesional, nombre_paciente, consultorio, area, estado }
-    modulos: {}, // { 'Módulo 1': { nombre_paciente, estado } }
-    colaCalls: [], // Queue de anuncios { tipo, id, nombre_paciente, destino, ... }
-    llamadoActivo: null,
-    progresoTimer: null,
-    beepFinalTimer: null, // segundo timbre, ~1.5s antes de que el anuncio desaparezca
-    progresoStart: null,
-};
-
-let duracionLlamado = 8000; // ms — configurable vía duracion_anuncio_seg (config pública)
-
-// Estado de audio/energía. sonidoHabilitado por defecto true hasta leer la config pública.
-let sonidoHabilitado = true;
-let audioOk = false;       // ¿el AudioContext está 'running'? Se reporta en el heartbeat.
-let wakeLock = null;       // WakeLockSentinel para evitar que la TV apague la pantalla.
-let audioYaActivado = false; // fullscreen/wakelock se piden una sola vez, en el primer gesto.
-
-// ── Web Audio beeps ─────────────────────────────────────────────
-// Se reutiliza un único AudioContext. Crear uno nuevo por cada beep agota el
-// límite de contextos del navegador (deja de sonar tras unas pocas veces) y los
-// deja en estado "suspended" por la política de autoplay. Antes de cada sonido
-// el contexto se reanuda (resume) controlando la promesa, equivalente a
-// reiniciar el objeto de audio antes de reproducirlo.
-let audioCtx = null;
-
-function getAudioCtx() {
-    if (!audioCtx) {
-        try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        } catch {
-            return null;
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/branding.js"></script>
+    <script>
+        // ── Diagnóstico de viewport (solo con ?debug en la URL) ─────────
+        // Útil desde el propio TV para ver qué viewport CSS/DPR usa el navegador (Fully Kiosk
+        // reduce el viewport CSS según el devicePixelRatio). Sin ?debug no se muestra ni se
+        // registra el listener. Texto propio (no requiere esc()).
+        if (new URLSearchParams(location.search).has('debug')) {
+            const el = document.getElementById('debug-viewport');
+            const pintar = () => el.textContent =
+                `${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio || 1}x`;
+            el.style.display = '';
+            pintar();
+            window.addEventListener('resize', pintar);
         }
-    }
-    return audioCtx;
-}
 
-// ── Overlay / banner / vigilante de audio ───────────────────────
-function mostrarOverlayAudio() { document.getElementById('overlay-audio').style.display = 'flex'; }
-function ocultarOverlayAudio() { document.getElementById('overlay-audio').style.display = 'none'; }
-function mostrarBannerAudio() { document.getElementById('banner-audio').style.display = 'block'; }
-function ocultarBannerAudio() { document.getElementById('banner-audio').style.display = 'none'; }
+        // ── Reloj ───────────────────────────────────────────────────────
+        function actualizarReloj() {
+            document.getElementById('reloj-display').textContent = new Date().toLocaleTimeString('es-CO');
+        }
+        setInterval(actualizarReloj, 1000);
+        actualizarReloj();
 
-function recalcularAudioOk() { audioOk = !!(audioCtx && audioCtx.state === 'running'); }
+        // "Salir" vuelve al menú principal. Ya no hay botón visible: se accede con triple-click
+        // en el logo, para que pacientes/curiosos no puedan sacar la TV del modo display.
+        function salir() {
+            window.location.href = '/';
+        }
 
-// Wake Lock: mantiene la pantalla encendida en la TV. Best-effort (no todos los navegadores).
-async function pedirWakeLock() {
-    try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
-}
+        // Triple-click en el logo dentro de una ventana de 600 ms → salir().
+        (() => {
+            const logo = document.getElementById('logo-display');
+            if (!logo) return;
+            let clicks = 0, resetTimer = null;
+            logo.addEventListener('click', () => {
+                clicks++;
+                clearTimeout(resetTimer);
+                if (clicks >= 3) { clicks = 0; salir(); return; }
+                resetTimer = setTimeout(() => { clicks = 0; }, 600);
+            });
+        })();
 
-// Decide el overlay al cargar según el estado del contexto y si el sonido está habilitado.
-function inicializarAudio() {
-    const ctx = getAudioCtx();
-    recalcularAudioOk();
-    if (!sonidoHabilitado) { ocultarOverlayAudio(); ocultarBannerAudio(); return; }
-    // Solo se pide activación si hay un contexto suspendido que un gesto pueda reanudar.
-    if (ctx && ctx.state === 'suspended') mostrarOverlayAudio();
-    else ocultarOverlayAudio();
-}
+        // Escapa texto dinámico antes de inyectarlo en innerHTML (el nombre del consultorio
+        // proviene del catálogo administrable, así que puede contener caracteres especiales).
+        function escHtml(v) {
+            return String(v ?? '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
 
-// La política de autoplay exige un gesto del usuario para habilitar el sonido.
-// El PRIMER gesto reanuda el contexto, confirma con un beep, oculta el overlay y
-// pide fullscreen + wake lock (una sola vez, en el contexto del gesto).
-function desbloquearAudio() {
-    const ctx = getAudioCtx();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
-        ctx.resume().then(() => {
+        // Identificador persistente de esta terminal (UUID). Necesario para que el backend
+        // registre la pantalla en 'terminales' y acepte sus heartbeats. Mismo patrón que Profesional.
+        const TERMINAL_ID = (() => {
+            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            let id = localStorage.getItem('terminal_id');
+            if (!id || !UUID_RE.test(id)) {
+                id = crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+                        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+                localStorage.setItem('terminal_id', id);
+            }
+            return id;
+        })();
+
+        // ── Estado del display ──────────────────────────────────────────
+        const estado = {
+            consultorios: {}, // indexado por id de asignación → { id, profesional, nombre_paciente, consultorio, area, estado }
+            modulos: {}, // { 'Módulo 1': { nombre_paciente, estado } }
+            colaCalls: [], // Queue de anuncios { tipo, id, nombre_paciente, destino, ... }
+            llamadoActivo: null,
+            progresoTimer: null,
+            beepFinalTimer: null, // segundo timbre, ~1.5s antes de que el anuncio desaparezca
+            progresoStart: null,
+        };
+
+        let duracionLlamado = 8000; // ms — configurable vía duracion_anuncio_seg (config pública)
+
+        // Estado de audio/energía. sonidoHabilitado por defecto true hasta leer la config pública.
+        let sonidoHabilitado = true;
+        let audioOk = false;       // ¿el AudioContext está 'running'? Se reporta en el heartbeat.
+        let wakeLock = null;       // WakeLockSentinel para evitar que la TV apague la pantalla.
+        let audioYaActivado = false; // fullscreen/wakelock se piden una sola vez, en el primer gesto.
+
+        // ── Web Audio beeps ─────────────────────────────────────────────
+        // Se reutiliza un único AudioContext. Crear uno nuevo por cada beep agota el
+        // límite de contextos del navegador (deja de sonar tras unas pocas veces) y los
+        // deja en estado "suspended" por la política de autoplay. Antes de cada sonido
+        // el contexto se reanuda (resume) controlando la promesa, equivalente a
+        // reiniciar el objeto de audio antes de reproducirlo.
+        let audioCtx = null;
+
+        function getAudioCtx() {
+            if (!audioCtx) {
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch {
+                    return null;
+                }
+            }
+            return audioCtx;
+        }
+
+        // ── Overlay / banner / vigilante de audio ───────────────────────
+        function mostrarOverlayAudio() { document.getElementById('overlay-audio').style.display = 'flex'; }
+        function ocultarOverlayAudio() { document.getElementById('overlay-audio').style.display = 'none'; }
+        function mostrarBannerAudio() { document.getElementById('banner-audio').style.display = 'block'; }
+        function ocultarBannerAudio() { document.getElementById('banner-audio').style.display = 'none'; }
+
+        function recalcularAudioOk() { audioOk = !!(audioCtx && audioCtx.state === 'running'); }
+
+        // Wake Lock: mantiene la pantalla encendida en la TV. Best-effort (no todos los navegadores).
+        async function pedirWakeLock() {
+            try { wakeLock = await navigator.wakeLock.request('screen'); } catch { }
+        }
+
+        // Decide el overlay al cargar según el estado del contexto y si el sonido está habilitado.
+        function inicializarAudio() {
+            const ctx = getAudioCtx();
             recalcularAudioOk();
-            beepDoble(); // confirmación audible (silenciosa si el sonido está deshabilitado)
-            ocultarOverlayAudio();
-            ocultarBannerAudio();
-        }).catch(() => {});
-    } else {
-        ocultarOverlayAudio();
-        ocultarBannerAudio();
-    }
-    if (!audioYaActivado) {
-        audioYaActivado = true;
-        try {
-            const el = document.documentElement;
-            if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
-        } catch {}
-        pedirWakeLock();
-    }
-}
-document.addEventListener('click', desbloquearAudio);
-document.addEventListener('keydown', desbloquearAudio);
+            if (!sonidoHabilitado) { ocultarOverlayAudio(); ocultarBannerAudio(); return; }
+            // Solo se pide activación si hay un contexto suspendido que un gesto pueda reanudar.
+            if (ctx && ctx.state === 'suspended') mostrarOverlayAudio();
+            else ocultarOverlayAudio();
+        }
 
-// Re-adquirir el Wake Lock cuando el documento vuelve a ser visible (se libera al ocultarse).
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !wakeLock) pedirWakeLock();
-});
+        // La política de autoplay exige un gesto del usuario para habilitar el sonido.
+        // El PRIMER gesto reanuda el contexto, confirma con un beep, oculta el overlay y
+        // pide fullscreen + wake lock (una sola vez, en el contexto del gesto).
+        function desbloquearAudio() {
+            const ctx = getAudioCtx();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') {
+                ctx.resume().then(() => {
+                    recalcularAudioOk();
+                    beepDoble(); // confirmación audible (silenciosa si el sonido está deshabilitado)
+                    ocultarOverlayAudio();
+                    ocultarBannerAudio();
+                }).catch(() => { });
+            } else {
+                ocultarOverlayAudio();
+                ocultarBannerAudio();
+            }
+            if (!audioYaActivado) {
+                audioYaActivado = true;
+                try {
+                    const el = document.documentElement;
+                    if (el.requestFullscreen) el.requestFullscreen().catch(() => { });
+                } catch { }
+                pedirWakeLock();
+            }
+        }
+        document.addEventListener('click', desbloquearAudio);
+        document.addEventListener('keydown', desbloquearAudio);
 
-// Vigilante: cada 5s revisa el estado real del audio. Si debería sonar pero el contexto
-// no está 'running', intenta reanudarlo en silencio y, si no lo logra, muestra el banner.
-setInterval(() => {
-    const ctx = getAudioCtx();
-    recalcularAudioOk();
-    if (!sonidoHabilitado) { ocultarBannerAudio(); return; }
-    if (ctx && ctx.state !== 'running') {
-        ctx.resume().catch(() => {});
-        if (ctx.state !== 'running') mostrarBannerAudio();
-    } else {
-        ocultarBannerAudio();
-    }
-}, 5000);
+        // Re-adquirir el Wake Lock cuando el documento vuelve a ser visible (se libera al ocultarse).
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && !wakeLock) pedirWakeLock();
+        });
 
-function beep(frecuencia = 880, duracion = 150) {
-    try {
-        if (!sonidoHabilitado) return; // silencio intencional configurado por el admin
-        const ctx = getAudioCtx();
-        if (!ctx) return;
-        // Reiniciar/reanudar el contexto antes de sonar y controlar la promesa
-        // para no lanzar excepción por las políticas de autoplay del navegador.
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = frecuencia;
-        gain.gain.setValueAtTime(.4, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + duracion / 1000);
-        osc.start();
-        osc.stop(ctx.currentTime + duracion / 1000 + .05);
-    } catch {}
-}
+        // Vigilante: cada 5s revisa el estado real del audio. Si debería sonar pero el contexto
+        // no está 'running', intenta reanudarlo en silencio y, si no lo logra, muestra el banner.
+        setInterval(() => {
+            const ctx = getAudioCtx();
+            recalcularAudioOk();
+            if (!sonidoHabilitado) { ocultarBannerAudio(); return; }
+            if (ctx && ctx.state !== 'running') {
+                ctx.resume().catch(() => { });
+                if (ctx.state !== 'running') mostrarBannerAudio();
+            } else {
+                ocultarBannerAudio();
+            }
+        }, 5000);
 
-function beepDoble() {
-    beep(880, 150);
-    setTimeout(() => beep(1100, 180), 250);
-    setTimeout(() => beep(1320, 180), 500);
-}
+        function beep(frecuencia = 880, duracion = 150) {
+            try {
+                if (!sonidoHabilitado) return; // silencio intencional configurado por el admin
+                const ctx = getAudioCtx();
+                if (!ctx) return;
+                // Reiniciar/reanudar el contexto antes de sonar y controlar la promesa
+                // para no lanzar excepción por las políticas de autoplay del navegador.
+                if (ctx.state === 'suspended') ctx.resume().catch(() => { });
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = frecuencia;
+                gain.gain.setValueAtTime(.4, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + duracion / 1000);
+                osc.start();
+                osc.stop(ctx.currentTime + duracion / 1000 + .05);
+            } catch { }
+        }
 
-// ── Render consultorios ─────────────────────────────────────────
-function renderConsultorios() {
-    const lista = document.getElementById('lista-consultorios');
-    const items = Object.values(estado.consultorios);
-    if (!items.length) {
-        lista.innerHTML = '<div style="font-size:.8rem;color:#94a3b8;text-align:center;padding:20px">Sin consultorios activos</div>';
-        return;
-    }
-    // Ordenar por consultorio
-    items.sort((a, b) => (a.consultorio || '').localeCompare(b.consultorio || '', undefined, { numeric: true }));
-    lista.innerHTML = items.map(c => {
-        const prof = escHtml(c.profesional || '');
-        // El nombre del consultorio ya es completo (proviene del catálogo del admin):
-        // se muestra tal cual, sin anteponer "Consultorio ", y escapado por seguridad.
-        const destino = escHtml(c.consultorio || c.area || 'Consultorio');
-        return `<div class="item-card activo" data-profesional="${prof}">
+        function beepDoble() {
+            beep(880, 150);
+            setTimeout(() => beep(1100, 180), 250);
+            setTimeout(() => beep(1320, 180), 500);
+        }
+
+        // ── Render consultorios ─────────────────────────────────────────
+        function renderConsultorios() {
+            const lista = document.getElementById('lista-consultorios');
+            const items = Object.values(estado.consultorios);
+            if (!items.length) {
+                lista.innerHTML = '<div style="font-size:.8rem;color:#94a3b8;text-align:center;padding:20px">Sin consultorios activos</div>';
+                return;
+            }
+            // Ordenar por consultorio
+            items.sort((a, b) => (a.consultorio || '').localeCompare(b.consultorio || '', undefined, { numeric: true }));
+            lista.innerHTML = items.map(c => {
+                const prof = escHtml(c.profesional || '');
+                // El nombre del consultorio ya es completo (proviene del catálogo del admin):
+                // se muestra tal cual, sin anteponer "Consultorio ", y escapado por seguridad.
+                const destino = escHtml(c.consultorio || c.area || 'Consultorio');
+                return `<div class="item-card activo" data-profesional="${prof}">
             <div class="item-num">${destino}</div>
             <div class="item-nombre">${escHtml(c.nombre_paciente || 'PACIENTE')}</div>
         </div>`;
-    }).join('');
-}
+            }).join('');
+        }
 
-// ── Render módulos admisiones ───────────────────────────────────
-function renderModulos() {
-    const lista = document.getElementById('lista-modulos');
-    const items = Object.entries(estado.modulos);
-    if (!items.length) {
-        lista.innerHTML = '<div style="font-size:.8rem;color:#94a3b8;text-align:center;padding:20px">Sin módulos activos</div>';
-        return;
-    }
-    lista.innerHTML = items.map(([modulo, data]) => {
-        const libre = !data || !data.nombre_paciente;
-        return `<div class="item-card ${libre ? 'libre' : 'activo'}">
+        // ── Render módulos admisiones ───────────────────────────────────
+        function renderModulos() {
+            const lista = document.getElementById('lista-modulos');
+            const items = Object.entries(estado.modulos);
+            if (!items.length) {
+                lista.innerHTML = '<div style="font-size:.8rem;color:#94a3b8;text-align:center;padding:20px">Sin módulos activos</div>';
+                return;
+            }
+            lista.innerHTML = items.map(([modulo, data]) => {
+                const libre = !data || !data.nombre_paciente;
+                return `<div class="item-card ${libre ? 'libre' : 'activo'}">
             <div class="item-num">${escHtml(modulo)}</div>
             <div class="item-nombre ${libre ? 'libre' : ''}">${libre ? '(Libre)' : escHtml(data.nombre_paciente)}</div>
         </div>`;
-    }).join('');
-}
+            }).join('');
+        }
 
-// ── Cola de anuncios ────────────────────────────────────────────
-function encolarLlamado(llamado) {
-    estado.colaCalls.push(llamado);
-    if (!estado.llamadoActivo) procesarSiguiente();
-    renderColaSiguiente();
-}
+        // ── Cola de anuncios ────────────────────────────────────────────
+        function encolarLlamado(llamado) {
+            estado.colaCalls.push(llamado);
+            if (!estado.llamadoActivo) procesarSiguiente();
+            renderColaSiguiente();
+        }
 
-function procesarSiguiente() {
-    if (!estado.colaCalls.length) {
-        ocultarLlamado();
-        return;
-    }
-    const siguiente = estado.colaCalls.shift();
-    mostrarLlamado(siguiente);
-    renderColaSiguiente();
-}
+        function procesarSiguiente() {
+            if (!estado.colaCalls.length) {
+                ocultarLlamado();
+                return;
+            }
+            const siguiente = estado.colaCalls.shift();
+            mostrarLlamado(siguiente);
+            renderColaSiguiente();
+        }
 
-function mostrarLlamado(llamado) {
-    estado.llamadoActivo = llamado;
-    clearTimeout(estado.progresoTimer);
-    clearTimeout(estado.beepFinalTimer);
+        function mostrarLlamado(llamado) {
+            estado.llamadoActivo = llamado;
+            clearTimeout(estado.progresoTimer);
+            clearTimeout(estado.beepFinalTimer);
 
-    const el = document.getElementById('llamado-actual');
-    const sinEl = document.getElementById('sin-llamado');
-    sinEl.style.display = 'none';
-    el.style.display = 'flex';
+            const el = document.getElementById('llamado-actual');
+            const sinEl = document.getElementById('sin-llamado');
+            sinEl.style.display = 'none';
+            el.style.display = 'flex';
 
-    const tipoBadge = llamado.tipo === 'admision'
-        ? '<span class="llamado-tipo-badge badge-admision">Admisiones</span>'
-        : '<span class="llamado-tipo-badge badge-profesional">Consultorio</span>';
+            const tipoBadge = llamado.tipo === 'admision'
+                ? '<span class="llamado-tipo-badge badge-admision">Admisiones</span>'
+                : '<span class="llamado-tipo-badge badge-profesional">Consultorio</span>';
 
-    el.innerHTML = `
+            el.innerHTML = `
         ${tipoBadge}
         <div class="llamado-etiqueta">Pasar a</div>
         <div class="llamado-nombre">${escHtml(llamado.nombre_paciente || 'PACIENTE')}</div>
         <div class="llamado-destino">${escHtml(llamado.destino || '')}</div>
     `;
 
-    // Barra de progreso
-    const barra = document.getElementById('progreso-bar');
-    barra.style.transition = 'none';
-    barra.style.width = '100%';
-    setTimeout(() => {
-        barra.style.transition = `width ${duracionLlamado}ms linear`;
-        barra.style.width = '0%';
-    }, 50);
+            // Barra de progreso
+            const barra = document.getElementById('progreso-bar');
+            barra.style.transition = 'none';
+            barra.style.width = '100%';
+            setTimeout(() => {
+                barra.style.transition = `width ${duracionLlamado}ms linear`;
+                barra.style.width = '0%';
+            }, 50);
 
-    beepDoble();
+            beepDoble();
 
-    estado.progresoTimer = setTimeout(procesarSiguiente, duracionLlamado);
-    // Segundo timbre 1.5s antes de que el anuncio desaparezca.
-    estado.beepFinalTimer = setTimeout(beepDoble, duracionLlamado - 1500);
-}
+            estado.progresoTimer = setTimeout(procesarSiguiente, duracionLlamado);
+            // Segundo timbre 1.5s antes de que el anuncio desaparezca.
+            estado.beepFinalTimer = setTimeout(beepDoble, duracionLlamado - 1500);
+        }
 
-function ocultarLlamado() {
-    estado.llamadoActivo = null;
-    clearTimeout(estado.beepFinalTimer);
-    document.getElementById('llamado-actual').style.display = 'none';
-    document.getElementById('sin-llamado').style.display = 'flex';
-    document.getElementById('progreso-bar').style.width = '0';
-}
+        function ocultarLlamado() {
+            estado.llamadoActivo = null;
+            clearTimeout(estado.beepFinalTimer);
+            document.getElementById('llamado-actual').style.display = 'none';
+            document.getElementById('sin-llamado').style.display = 'flex';
+            document.getElementById('progreso-bar').style.width = '0';
+        }
 
-function renderColaSiguiente() {
-    const el = document.getElementById('cola-siguiente');
-    if (!estado.colaCalls.length) { el.innerHTML = ''; return; }
-    el.innerHTML = estado.colaCalls.map(c =>
-        `<div class="sig-item">${escHtml(c.nombre_paciente)}</div>`
-    ).join('');
-}
+        function renderColaSiguiente() {
+            const el = document.getElementById('cola-siguiente');
+            if (!estado.colaCalls.length) { el.innerHTML = ''; return; }
+            el.innerHTML = estado.colaCalls.map(c =>
+                `<div class="sig-item">${escHtml(c.nombre_paciente)}</div>`
+            ).join('');
+        }
 
-// Cancela la visualización de una asignación (timer + cola). Coincide por id de
-// asignación o —para anuncios sin id, p.ej. el "Sonar" de profesional— por nombre.
-function cancelarLlamadoAsignacion(id, prof) {
-    const coincide = c => c.tipo === 'profesional' &&
-        ((id != null && c.id === id) || (c.id == null && prof && c.nombre_profesional === prof));
-    estado.colaCalls = estado.colaCalls.filter(c => !coincide(c));
-    renderColaSiguiente();
-    if (estado.llamadoActivo && coincide(estado.llamadoActivo)) {
-        clearTimeout(estado.progresoTimer);
-        clearTimeout(estado.beepFinalTimer);
-        estado.llamadoActivo = null;
-        procesarSiguiente();
-    }
-}
-
-// Devuelve el anuncio activo al FRENTE de la cola si no es el mismo que se va a mostrar,
-// para no perderlo cuando un "Sonar" interrumpe el centro. Deja llamadoActivo en null.
-function rescatarActivo(esMismo) {
-    if (estado.llamadoActivo && !esMismo(estado.llamadoActivo)) {
-        estado.colaCalls.unshift(estado.llamadoActivo);
-    }
-    estado.llamadoActivo = null;
-}
-
-// Cancela inmediatamente la visualización de un llamado de admisiones (timer + cola).
-// Se identifica por id de paciente o, en su defecto, por módulo.
-function cancelarLlamadoAdmision(id, modulo) {
-    const coincide = c => c.tipo === 'admision' &&
-        ((id != null && c.id === id) || (modulo && c.modulo === modulo));
-    estado.colaCalls = estado.colaCalls.filter(c => !coincide(c));
-    renderColaSiguiente();
-    if (estado.llamadoActivo && coincide(estado.llamadoActivo)) {
-        clearTimeout(estado.progresoTimer);
-        clearTimeout(estado.beepFinalTimer);
-        estado.llamadoActivo = null;
-        procesarSiguiente();
-    }
-}
-
-// ── Socket.io ───────────────────────────────────────────────────
-const socket = io();
-
-socket.on('connect', () => {
-    document.getElementById('dot-ws').classList.add('ok');
-    recalcularAudioOk();
-    socket.emit('join', { tipo: 'display', terminalId: TERMINAL_ID, audioOk });
-    cargarEstadoInicial();
-});
-socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
-// Recarga branding (título/logo) cuando Admin cambia la configuración; además relee la
-// config pública (por si cambió 'sonido_habilitado') y reevalúa overlay/banner.
-socket.on('config:actualizada', () => {
-    if (window.recargarBranding) window.recargarBranding();
-    cargarConfigPublica().then(() => { inicializarAudio(); });
-});
-
-// Heartbeat cada 30s: mantiene la fila de 'terminales' en línea y reporta el estado de audio.
-setInterval(() => {
-    recalcularAudioOk();
-    socket.emit('heartbeat', { terminalId: TERMINAL_ID, audioOk });
-}, 30000);
-
-// Profesional solicita volver a sonar. Igual que admisiones: además del pulso lateral,
-// toma el centro (para el paciente distraído en otra sala), rescatando el anuncio activo.
-socket.on('display:sonar', (data) => {
-    const prof = data.nombre_profesional;
-    if (prof) {
-        // Pulsar TODAS las tarjetas de este profesional (multipaciente puede tener varias).
-        document.querySelectorAll('.item-card[data-profesional]').forEach(card => {
-            if (card.dataset.profesional === prof) {
-                card.classList.remove('sonando');
-                void card.offsetWidth; // reiniciar animación
-                card.classList.add('sonando');
-                card.addEventListener('animationend', () => card.classList.remove('sonando'), { once: true });
-            }
-        });
-    }
-
-    // Rescatar el anuncio en curso (si es otro) y quitar instancias previas sin id de
-    // este mismo profesional antes de mostrar al frente.
-    rescatarActivo(c => c.tipo === 'profesional' && c.id == null &&
-        c.nombre_profesional === prof && c.nombre_paciente === data.nombre_paciente);
-    estado.colaCalls = estado.colaCalls.filter(c =>
-        !(c.tipo === 'profesional' && c.id == null && c.nombre_profesional === prof));
-    clearTimeout(estado.progresoTimer);
-    clearTimeout(estado.beepFinalTimer);
-    mostrarLlamado({
-        tipo: 'profesional', id: null,
-        nombre_profesional: prof,
-        nombre_paciente: data.nombre_paciente,
-        destino: data.consultorio || 'Consultorio'
-    });
-});
-
-// Admisiones llama un paciente
-socket.on('admision:llamando', (p) => {
-    const nombre = p.nombre_completo || [p.primer_nombre, p.primer_apellido].filter(Boolean).join(' ');
-    const modulo = p.modulo_admision || 'Admisiones';
-
-    // Actualizar estado del módulo
-    if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
-    renderModulos();
-
-    encolarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
-});
-
-// Admisiones solicita volver a sonar la alerta de un paciente ya llamado.
-// Replica de inmediato la alerta (audio + centro), igual que "Sonar" de Profesionales:
-// el paciente salta al frente y suena el timbre sin pasar por la cola de anuncios.
-socket.on('admision:sonar', (p) => {
-    const nombre = p.nombre_completo || [p.primer_nombre, p.primer_apellido].filter(Boolean).join(' ');
-    const modulo = p.modulo_admision || 'Admisiones';
-
-    if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
-    renderModulos();
-
-    // Rescata el anuncio en curso (si es otro paciente) para no perderlo, descarta
-    // instancias previas de este paciente y lo muestra al frente.
-    rescatarActivo(c => c.tipo === 'admision' && c.id === p.id);
-    estado.colaCalls = estado.colaCalls.filter(c => !(c.tipo === 'admision' && c.id === p.id));
-    clearTimeout(estado.progresoTimer);
-    clearTimeout(estado.beepFinalTimer);
-    mostrarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
-});
-
-// Admisiones confirma ingreso a Biofile
-socket.on('admision:completada', (p) => {
-    const modulo = p.modulo_admision;
-    if (modulo && estado.modulos[modulo]) {
-        delete estado.modulos[modulo];
-    }
-    renderModulos();
-});
-
-// Admisiones devuelve/cancela paciente a espera — desaparece al instante del display
-socket.on('admision:devuelto', (p) => {
-    // modulo_admision ya viene en NULL tras el UPDATE; se usa modulo_anterior.
-    const modulo = p.modulo_anterior || p.modulo_admision;
-    if (modulo && estado.modulos[modulo]) delete estado.modulos[modulo];
-    renderModulos();
-    cancelarLlamadoAdmision(p.id, modulo);
-});
-
-// Profesional llama un paciente
-socket.on('asignacion:llamando', (a) => {
-    const nombre = a.nombre_paciente || a.numero_identificacion;
-    const consultorio = a.consultorio || a.consultorio_profesional;
-    const prof = a.nombre_profesional;
-
-    // Deduplicar SOLO por id: si esta misma asignación ya estaba anunciada, se quita
-    // (no se toca a otros pacientes del mismo profesional en consultorio multipaciente).
-    cancelarLlamadoAsignacion(a.id, prof);
-
-    if (a.id != null) {
-        estado.consultorios[a.id] = {
-            id: a.id, profesional: prof, nombre_paciente: nombre,
-            consultorio, area: a.area, estado: 'llamando'
-        };
-    }
-    renderConsultorios();
-
-    // El nombre del consultorio ya es completo: se usa tal cual (sin "Consultorio ").
-    encolarLlamado({
-        tipo: 'profesional',
-        id: a.id,
-        nombre_paciente: nombre,
-        nombre_profesional: prof,
-        destino: consultorio || a.area || 'Consultorio'
-    });
-});
-
-// Profesional pasa a en atención — esa asignación sale de la columna izquierda
-socket.on('asignacion:en_atencion', (a) => {
-    if (a.id != null) delete estado.consultorios[a.id];
-    renderConsultorios();
-});
-
-// Profesional cancela llamado — sale de columna izquierda y del display central
-socket.on('asignacion:cancelado', (a) => {
-    cancelarLlamadoAsignacion(a.id, a.nombre_profesional);
-    if (a.id != null) delete estado.consultorios[a.id];
-    renderConsultorios();
-});
-
-// Profesional finaliza
-socket.on('asignacion:finalizado', (a) => {
-    if (a.id != null) delete estado.consultorios[a.id];
-    renderConsultorios();
-});
-
-// ── Estado inicial (recuperación tras F5 / corte de luz) ────────
-// Antes de depender de los WebSockets, el Display consulta los pacientes que están
-// "Llamando" ahora mismo y reconstruye tanto los paneles laterales (módulos y
-// consultorios) como el anuncio central, recuperando el estado exacto.
-async function cargarEstadoInicial() {
-    try {
-        const resp = await fetch('/api/display/activos');
-        if (!resp.ok) return;
-        const { activos } = await resp.json();
-
-        // El servidor es la fuente autoritativa: se parte de cero para que el estado
-        // quede exacto (sin entradas obsoletas si esto se ejecuta en una reconexión).
-        estado.consultorios = {};
-        estado.modulos = {};
-
-        for (const a of activos) {
-            if (a.tipo === 'profesional' && a.id != null) {
-                estado.consultorios[a.id] = {
-                    id: a.id,
-                    profesional: a.nombre_profesional,
-                    nombre_paciente: a.nombre_paciente,
-                    consultorio: a.consultorio,
-                    area: a.area,
-                    estado: 'llamando'
-                };
-                if (!yaAnunciado(a)) {
-                    encolarLlamado({
-                        tipo: 'profesional',
-                        id: a.id,
-                        nombre_paciente: a.nombre_paciente,
-                        nombre_profesional: a.nombre_profesional,
-                        destino: a.destino
-                    });
-                }
-            } else if (a.tipo === 'admision' && a.modulo) {
-                estado.modulos[a.modulo] = { nombre_paciente: a.nombre_paciente, estado: 'llamando' };
-                if (!yaAnunciado(a)) {
-                    encolarLlamado({
-                        tipo: 'admision',
-                        id: a.id,
-                        modulo: a.modulo,
-                        nombre_paciente: a.nombre_paciente,
-                        destino: a.destino
-                    });
-                }
+        // Cancela la visualización de una asignación (timer + cola). Coincide por id de
+        // asignación o —para anuncios sin id, p.ej. el "Sonar" de profesional— por nombre.
+        function cancelarLlamadoAsignacion(id, prof) {
+            const coincide = c => c.tipo === 'profesional' &&
+                ((id != null && c.id === id) || (c.id == null && prof && c.nombre_profesional === prof));
+            estado.colaCalls = estado.colaCalls.filter(c => !coincide(c));
+            renderColaSiguiente();
+            if (estado.llamadoActivo && coincide(estado.llamadoActivo)) {
+                clearTimeout(estado.progresoTimer);
+                clearTimeout(estado.beepFinalTimer);
+                estado.llamadoActivo = null;
+                procesarSiguiente();
             }
         }
 
-        renderConsultorios();
-        renderModulos();
-    } catch {}
-}
+        // Devuelve el anuncio activo al FRENTE de la cola si no es el mismo que se va a mostrar,
+        // para no perderlo cuando un "Sonar" interrumpe el centro. Deja llamadoActivo en null.
+        function rescatarActivo(esMismo) {
+            if (estado.llamadoActivo && !esMismo(estado.llamadoActivo)) {
+                estado.colaCalls.unshift(estado.llamadoActivo);
+            }
+            estado.llamadoActivo = null;
+        }
 
-// ¿El anuncio (activo o en cola) ya representa a este paciente? Evita duplicados
-// en el centro cuando cargarEstadoInicial corre en una reconexión de socket.
-function yaAnunciado(a) {
-    const todos = estado.colaCalls.concat(estado.llamadoActivo ? [estado.llamadoActivo] : []);
-    if (a.tipo === 'profesional') {
-        return todos.some(c => c.tipo === 'profesional' && c.id != null && c.id === a.id);
-    }
-    return todos.some(c => c.tipo === 'admision' && c.id === a.id);
-}
+        // Cancela inmediatamente la visualización de un llamado de admisiones (timer + cola).
+        // Se identifica por id de paciente o, en su defecto, por módulo.
+        function cancelarLlamadoAdmision(id, modulo) {
+            const coincide = c => c.tipo === 'admision' &&
+                ((id != null && c.id === id) || (modulo && c.modulo === modulo));
+            estado.colaCalls = estado.colaCalls.filter(c => !coincide(c));
+            renderColaSiguiente();
+            if (estado.llamadoActivo && coincide(estado.llamadoActivo)) {
+                clearTimeout(estado.progresoTimer);
+                clearTimeout(estado.beepFinalTimer);
+                estado.llamadoActivo = null;
+                procesarSiguiente();
+            }
+        }
 
-// Lee la config pública: sonido habilitado (default true) y duración del anuncio
-// (default 8s). Se re-lee en 'config:actualizada', así el cambio aplica en vivo.
-async function cargarConfigPublica() {
-    try {
-        const resp = await fetch('/api/config/publica');
-        const cfg = await resp.json();
-        sonidoHabilitado = cfg.sonido_habilitado !== false;
-        const seg = Number(cfg.duracion_anuncio_seg);
-        if (Number.isFinite(seg) && seg > 0) duracionLlamado = seg * 1000;
-    } catch {
-        sonidoHabilitado = true;
-    }
-}
+        // ── Socket.io ───────────────────────────────────────────────────
+        const socket = io();
 
-// Recuperación inmediata al cargar la página (F5 / corte de luz), sin esperar a que
-// el socket conecte. La reconexión del socket vuelve a sincronizar de forma idempotente.
-cargarEstadoInicial();
+        socket.on('connect', () => {
+            document.getElementById('dot-ws').classList.add('ok');
+            recalcularAudioOk();
+            socket.emit('join', { tipo: 'display', terminalId: TERMINAL_ID, audioOk });
+            cargarEstadoInicial();
+        });
+        socket.on('disconnect', () => document.getElementById('dot-ws').classList.remove('ok'));
+        // Recarga branding (título/logo) cuando Admin cambia la configuración; además relee la
+        // config pública (por si cambió 'sonido_habilitado') y reevalúa overlay/banner.
+        socket.on('config:actualizada', () => {
+            if (window.recargarBranding) window.recargarBranding();
+            cargarConfigPublica().then(() => { inicializarAudio(); });
+        });
 
-// Arranque de audio: primero se resuelve la config (sonido habilitado o no) y luego se
-// decide el overlay de activación.
-cargarConfigPublica().then(() => { inicializarAudio(); });
-</script>
+        // Heartbeat cada 30s: mantiene la fila de 'terminales' en línea y reporta el estado de audio.
+        setInterval(() => {
+            recalcularAudioOk();
+            socket.emit('heartbeat', { terminalId: TERMINAL_ID, audioOk });
+        }, 30000);
+
+        // Profesional solicita volver a sonar. Igual que admisiones: además del pulso lateral,
+        // toma el centro (para el paciente distraído en otra sala), rescatando el anuncio activo.
+        socket.on('display:sonar', (data) => {
+            const prof = data.nombre_profesional;
+            if (prof) {
+                // Pulsar TODAS las tarjetas de este profesional (multipaciente puede tener varias).
+                document.querySelectorAll('.item-card[data-profesional]').forEach(card => {
+                    if (card.dataset.profesional === prof) {
+                        card.classList.remove('sonando');
+                        void card.offsetWidth; // reiniciar animación
+                        card.classList.add('sonando');
+                        card.addEventListener('animationend', () => card.classList.remove('sonando'), { once: true });
+                    }
+                });
+            }
+
+            // Rescatar el anuncio en curso (si es otro) y quitar instancias previas sin id de
+            // este mismo profesional antes de mostrar al frente.
+            rescatarActivo(c => c.tipo === 'profesional' && c.id == null &&
+                c.nombre_profesional === prof && c.nombre_paciente === data.nombre_paciente);
+            estado.colaCalls = estado.colaCalls.filter(c =>
+                !(c.tipo === 'profesional' && c.id == null && c.nombre_profesional === prof));
+            clearTimeout(estado.progresoTimer);
+            clearTimeout(estado.beepFinalTimer);
+            mostrarLlamado({
+                tipo: 'profesional', id: null,
+                nombre_profesional: prof,
+                nombre_paciente: data.nombre_paciente,
+                destino: data.consultorio || 'Consultorio'
+            });
+        });
+
+        // Admisiones llama un paciente
+        socket.on('admision:llamando', (p) => {
+            const nombre = p.nombre_completo || [p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido].filter(Boolean).join(' ');
+            const modulo = p.modulo_admision || 'Admisiones';
+
+            // Actualizar estado del módulo
+            if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
+            renderModulos();
+
+            encolarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
+        });
+
+        // Admisiones solicita volver a sonar la alerta de un paciente ya llamado.
+        // Replica de inmediato la alerta (audio + centro), igual que "Sonar" de Profesionales:
+        // el paciente salta al frente y suena el timbre sin pasar por la cola de anuncios.
+        socket.on('admision:sonar', (p) => {
+            const nombre = p.nombre_completo || [p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido].filter(Boolean).join(' ');
+            const modulo = p.modulo_admision || 'Admisiones';
+
+            if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
+            renderModulos();
+
+            // Rescata el anuncio en curso (si es otro paciente) para no perderlo, descarta
+            // instancias previas de este paciente y lo muestra al frente.
+            rescatarActivo(c => c.tipo === 'admision' && c.id === p.id);
+            estado.colaCalls = estado.colaCalls.filter(c => !(c.tipo === 'admision' && c.id === p.id));
+            clearTimeout(estado.progresoTimer);
+            clearTimeout(estado.beepFinalTimer);
+            mostrarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
+        });
+
+        // Admisiones confirma ingreso a Biofile
+        socket.on('admision:completada', (p) => {
+            const modulo = p.modulo_admision;
+            if (modulo && estado.modulos[modulo]) {
+                delete estado.modulos[modulo];
+            }
+            renderModulos();
+        });
+
+        // Admisiones devuelve/cancela paciente a espera — desaparece al instante del display
+        socket.on('admision:devuelto', (p) => {
+            // modulo_admision ya viene en NULL tras el UPDATE; se usa modulo_anterior.
+            const modulo = p.modulo_anterior || p.modulo_admision;
+            if (modulo && estado.modulos[modulo]) delete estado.modulos[modulo];
+            renderModulos();
+            cancelarLlamadoAdmision(p.id, modulo);
+        });
+
+        // Profesional llama un paciente
+        socket.on('asignacion:llamando', (a) => {
+            const nombre = a.nombre_paciente || a.numero_identificacion;
+            const consultorio = a.consultorio || a.consultorio_profesional;
+            const prof = a.nombre_profesional;
+
+            // Deduplicar SOLO por id: si esta misma asignación ya estaba anunciada, se quita
+            // (no se toca a otros pacientes del mismo profesional en consultorio multipaciente).
+            cancelarLlamadoAsignacion(a.id, prof);
+
+            if (a.id != null) {
+                estado.consultorios[a.id] = {
+                    id: a.id, profesional: prof, nombre_paciente: nombre,
+                    consultorio, area: a.area, estado: 'llamando'
+                };
+            }
+            renderConsultorios();
+
+            // El nombre del consultorio ya es completo: se usa tal cual (sin "Consultorio ").
+            encolarLlamado({
+                tipo: 'profesional',
+                id: a.id,
+                nombre_paciente: nombre,
+                nombre_profesional: prof,
+                destino: consultorio || a.area || 'Consultorio'
+            });
+        });
+
+        // Profesional pasa a en atención — esa asignación sale de la columna izquierda
+        socket.on('asignacion:en_atencion', (a) => {
+            if (a.id != null) delete estado.consultorios[a.id];
+            renderConsultorios();
+        });
+
+        // Profesional cancela llamado — sale de columna izquierda y del display central
+        socket.on('asignacion:cancelado', (a) => {
+            cancelarLlamadoAsignacion(a.id, a.nombre_profesional);
+            if (a.id != null) delete estado.consultorios[a.id];
+            renderConsultorios();
+        });
+
+        // Profesional finaliza
+        socket.on('asignacion:finalizado', (a) => {
+            if (a.id != null) delete estado.consultorios[a.id];
+            renderConsultorios();
+        });
+
+        // ── Estado inicial (recuperación tras F5 / corte de luz) ────────
+        // Antes de depender de los WebSockets, el Display consulta los pacientes que están
+        // "Llamando" ahora mismo y reconstruye tanto los paneles laterales (módulos y
+        // consultorios) como el anuncio central, recuperando el estado exacto.
+        async function cargarEstadoInicial() {
+            try {
+                const resp = await fetch('/api/display/activos');
+                if (!resp.ok) return;
+                const { activos } = await resp.json();
+
+                // El servidor es la fuente autoritativa: se parte de cero para que el estado
+                // quede exacto (sin entradas obsoletas si esto se ejecuta en una reconexión).
+                estado.consultorios = {};
+                estado.modulos = {};
+
+                for (const a of activos) {
+                    if (a.tipo === 'profesional' && a.id != null) {
+                        estado.consultorios[a.id] = {
+                            id: a.id,
+                            profesional: a.nombre_profesional,
+                            nombre_paciente: a.nombre_paciente,
+                            consultorio: a.consultorio,
+                            area: a.area,
+                            estado: 'llamando'
+                        };
+                        if (!yaAnunciado(a)) {
+                            encolarLlamado({
+                                tipo: 'profesional',
+                                id: a.id,
+                                nombre_paciente: a.nombre_paciente,
+                                nombre_profesional: a.nombre_profesional,
+                                destino: a.destino
+                            });
+                        }
+                    } else if (a.tipo === 'admision' && a.modulo) {
+                        estado.modulos[a.modulo] = { nombre_paciente: a.nombre_paciente, estado: 'llamando' };
+                        if (!yaAnunciado(a)) {
+                            encolarLlamado({
+                                tipo: 'admision',
+                                id: a.id,
+                                modulo: a.modulo,
+                                nombre_paciente: a.nombre_paciente,
+                                destino: a.destino
+                            });
+                        }
+                    }
+                }
+
+                renderConsultorios();
+                renderModulos();
+            } catch { }
+        }
+
+        // ¿El anuncio (activo o en cola) ya representa a este paciente? Evita duplicados
+        // en el centro cuando cargarEstadoInicial corre en una reconexión de socket.
+        function yaAnunciado(a) {
+            const todos = estado.colaCalls.concat(estado.llamadoActivo ? [estado.llamadoActivo] : []);
+            if (a.tipo === 'profesional') {
+                return todos.some(c => c.tipo === 'profesional' && c.id != null && c.id === a.id);
+            }
+            return todos.some(c => c.tipo === 'admision' && c.id === a.id);
+        }
+
+        // Lee la config pública: sonido habilitado (default true) y duración del anuncio
+        // (default 8s). Se re-lee en 'config:actualizada', así el cambio aplica en vivo.
+        async function cargarConfigPublica() {
+            try {
+                const resp = await fetch('/api/config/publica');
+                const cfg = await resp.json();
+                sonidoHabilitado = cfg.sonido_habilitado !== false;
+                const seg = Number(cfg.duracion_anuncio_seg);
+                if (Number.isFinite(seg) && seg > 0) duracionLlamado = seg * 1000;
+            } catch {
+                sonidoHabilitado = true;
+            }
+        }
+
+        // Recuperación inmediata al cargar la página (F5 / corte de luz), sin esperar a que
+        // el socket conecte. La reconexión del socket vuelve a sincronizar de forma idempotente.
+        cargarEstadoInicial();
+
+        // Arranque de audio: primero se resuelve la config (sonido habilitado o no) y luego se
+        // decide el overlay de activación.
+        cargarConfigPublica().then(() => { inicializarAudio(); });
+    </script>
 </body>
+
 </html>
