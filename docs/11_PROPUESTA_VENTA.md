@@ -1,5 +1,7 @@
 # Sistema Turnero CertiMedic — Propuesta de Desarrollo
 
+> Última actualización: 2026-07-05
+
 ---
 
 ## 1. Objetivo de la Propuesta
@@ -12,12 +14,12 @@ Presentar la estimación de tiempos, fases de ejecución y esquema de inversión
 
 El sistema estará compuesto por los siguientes bloques funcionales, orientados a cubrir el flujo operativo completo de atención al paciente:
 
-- **Módulo de Recepción:** Registro de llegada del paciente y gestión de prioridades en cola.
-- **Módulo de Admisiones:** Gestión de la cola de espera y procesamiento del ingreso al sistema de historia clínica.
-- **Módulo de Profesionales:** Lista de pacientes asignados por especialidad y control de estados de atención.
-- **Pantalla Pública (Display TV):** Visualización en tiempo real de llamados, con alerta sonora.
-- **Módulo de Administración:** Configuración de terminales, módulos y parametrización general.
-- **Integración con Sistema de Historia Clínica:** Sincronización automática de asignaciones de profesionales sin intervención del software existente.
+- **Módulo de Recepción:** Registro de llegada por escáner de cédula (PDF417), gestión de prioridades, edición y depuración de la cola.
+- **Módulo de Admisiones:** Gestión de la cola de espera con llamado en pantalla y trámite de ingreso en dos tiempos, con medición del tiempo real de cada etapa.
+- **Módulo de Profesionales:** Lista de pacientes asignados por especialidad, control de estados de atención y soporte de consultorios multipaciente (laboratorio, toma de muestras, psicología).
+- **Pantalla Pública (Display TV):** Visualización en tiempo real de llamados con alerta sonora garantizada (doble timbre), compatible con PCs por HDMI y Android TV; estado de cada pantalla monitoreado desde Administración.
+- **Módulo de Administración:** Dashboard en vivo, reportes por rango de fechas con exportación a Excel, gráficas, catálogo de consultorios, parametrización general y auditoría completa de eventos.
+- **Integración con Sistema de Historia Clínica:** Sincronización automática de asignaciones y horas de admisión sin intervención del software existente, con reconciliación de bajas y protección de la gestión manual.
 
 ---
 
