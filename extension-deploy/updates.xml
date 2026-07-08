@@ -1,15 +1,19 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!--
-  Manifiesto de actualizacion para la extension Turnero CertiMedic.
-  Este archivo se aloja en el SERVIDOR turnero, junto con turnero.crx.
+  Manifiesto de actualizacion de las DOS extensiones del Turnero.
+  Va en el SERVIDOR turnero (carpeta 'public'), servido por Express en:
+      http://SERVIDOR/updates.xml
 
-  ANTES de subirlo al servidor: reemplaza __SERVIDOR__ por la IP y el
-  puerto reales del servidor, por ejemplo  192.168.1.100:3000
-
-  Queda servido por Express en:  http://__SERVIDOR__/updates.xml
+  ANTES de subirlo: reemplaza __SERVIDOR__ por la IP:PUERTO reales del
+  servidor (ej: 192.168.1.100:3000). Debe quedar igual en las dos lineas.
 -->
 <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
-  <app appid='cnjjkmpamkklleaplpjhompomkbilcag'>
-    <updatecheck codebase='http://__SERVIDOR__/turnero.crx' version='1.0.0' />
+  <!-- Biofile-Sync -->
+  <app appid='ecgjdgihieabgheihfahojkoapopjkjj'>
+    <updatecheck codebase='http://__SERVIDOR__/biofile-sync.crx' version='1.0.0' />
+  </app>
+  <!-- Biofile-Injector -->
+  <app appid='bjogofdcbpmglacnhnbkbphkbomhnkdl'>
+    <updatecheck codebase='http://__SERVIDOR__/biofile-injector.crx' version='1.0' />
   </app>
 </gupdate>

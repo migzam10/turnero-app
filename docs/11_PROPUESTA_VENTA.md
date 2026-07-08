@@ -1,4 +1,4 @@
-# Sistema Turnero CertiMedic — Propuesta de Desarrollo
+# Sistema Turnero — Propuesta de Desarrollo
 
 > Última actualización: 2026-07-05
 

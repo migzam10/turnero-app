@@ -92,7 +92,7 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Habilitar sonido en pantallas TV'),
     ('intervalo_extension_seg', '60',
      'Intervalo de sincronización de la extensión en segundos'),
-    ('titulo_sufijo',           'Turnero CertiMedic',
+    ('titulo_sufijo',           'Turnero',
      'Texto personalizado que acompaña el nombre de cada módulo en el título'),
     ('display_logo',            '',
      'Logo del Display en formato data URL (vacío = ícono por defecto)'),

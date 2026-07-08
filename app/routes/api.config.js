@@ -14,7 +14,7 @@ router.get('/publica', async (req, res) => {
         );
         const cfg = Object.fromEntries(rows.map(r => [r.clave, r.valor]));
         return res.json({
-            titulo_sufijo: cfg.titulo_sufijo || 'Turnero CertiMedic',
+            titulo_sufijo: cfg.titulo_sufijo || 'Turnero',
             display_logo: cfg.display_logo || '',
             sonido_habilitado: cfg.sonido_habilitado !== 'false',   // default true
             duracion_anuncio_seg: Math.min(30, Math.max(4, parseInt(cfg.duracion_anuncio_seg, 10) || 8))

@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title Quitar extension - Turnero CertiMedic (terminal)
+title Quitar extensiones - Turnero (terminal)
 
 REM ============================================================
-REM  Quita las politicas que fuerzan la extension en este PC.
+REM  Quita las politicas que fuerzan las 2 extensiones en este PC.
 REM  Ejecutar como administrador.
 REM ============================================================
 
@@ -14,17 +14,19 @@ if %errorlevel% NEQ 0 (
     exit /b
 )
 
-echo Quitando politicas de Chrome...
-reg delete "HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" /v 1 /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallSources"   /v 1 /f >nul 2>&1
-
-echo Quitando politicas de Edge...
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" /v 1 /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallSources"   /v 1 /f >nul 2>&1
+for %%B in (
+    "HKLM\SOFTWARE\Policies\Google\Chrome"
+    "HKLM\SOFTWARE\Policies\Microsoft\Edge"
+) do (
+    echo Quitando politicas de %%~nxB ...
+    reg delete "%%~B\ExtensionInstallForcelist" /v 1 /f >nul 2>&1
+    reg delete "%%~B\ExtensionInstallForcelist" /v 2 /f >nul 2>&1
+    reg delete "%%~B\ExtensionInstallSources"   /v 1 /f >nul 2>&1
+)
 
 echo.
-echo [OK] Politicas quitadas. Reinicia Chrome/Edge para que la
-echo      extension desaparezca.
+echo [OK] Politicas quitadas. Reinicia Chrome/Edge para que las
+echo      extensiones desaparezcan.
 echo.
 pause
 exit /b 0

@@ -8,7 +8,7 @@
 //        -> zona del logo del Display (campana por defecto / imagen cargada)
 (function () {
     function aplicarBranding(cfg) {
-        const sufijo = (cfg && cfg.titulo_sufijo ? cfg.titulo_sufijo : 'Turnero CertiMedic').trim();
+        const sufijo = (cfg && cfg.titulo_sufijo ? cfg.titulo_sufijo : 'Turnero').trim();
 
         document.querySelectorAll('[data-titulo-base]').forEach(el => {
             const base = el.getAttribute('data-titulo-base');

@@ -13,7 +13,7 @@
 | Frontend (web) | HTML5 + CSS3 + Vanilla JS + Socket.io client | Sin framework, sin paso de build, fácil de desplegar y modificar. El panel Admin usa Chart.js y SheetJS por CDN (con degradación elegante si no cargan) |
 | Extensiones | Chrome/Edge Manifest V3 — **dos**: Biofile-Sync (lee la tabla de asignaciones) y Biofile-Injector (llena los campos de ingreso) | Leen/llenan el DOM de Biofile sin modificar el software |
 | Sonido en TVs | Web Audio API | Sin dependencias externas; overlay de activación + vigilante contra la política de autoplay |
-| Entornos | Desarrollo: Mac con Docker Compose · Producción: Windows Server 2019 **nativo** (PostgreSQL y Node como servicios) | Ver `DEPLOY.md` y `docs/09_INSTALACION_SERVIDOR.md` |
+| Entornos | Desarrollo: Mac con Docker Compose · Producción: Windows Server 2019 **nativo** (PostgreSQL y Node como servicios) | Ver `docs/09_INSTALACION_SERVIDOR.md` |
 
 ### Por qué PostgreSQL y no SQLite
 
@@ -71,7 +71,6 @@ Si el equipo tiene experiencia en Python/FastAPI, el cambio es viable — la arq
 turnero-app/
 ├── docker-compose.yml       ← Entorno de desarrollo (Mac): db + app
 ├── .env                     ← Variables de entorno (gitignored; ver .env.example)
-├── DEPLOY.md                ← Guía rápida de despliegue (detalle en docs/09)
 ├── scripts/
 │   ├── backup-db.sh         ← Backup diario (dev Mac / Linux)
 │   └── backup-db.ps1        ← Backup diario (Windows Server, Task Scheduler)

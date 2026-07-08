@@ -1,10 +1,10 @@
-# 00 — Visión General del Sistema Turnero CertiMedic
+# 00 — Visión General del Sistema Turnero
 
 > Última actualización: 2026-07-05
 
 ## ¿Qué es?
 
-Sistema de gestión de turnos para CertiMedic IPS que cubre el flujo completo desde que un paciente llega a la clínica hasta que termina de ser atendido por todos sus profesionales asignados.
+Sistema de gestión de turnos para la IPS que cubre el flujo completo desde que un paciente llega a la clínica hasta que termina de ser atendido por todos sus profesionales asignados.
 
 **Restricción fundamental:** Biofile (plataforma privada de la clínica) no tiene API pública. Toda integración se hace leyendo el DOM de páginas específicas mediante una extensión de navegador.
 
@@ -50,7 +50,7 @@ Sistema de gestión de turnos para CertiMedic IPS que cubre el flujo completo de
 
 ### Paso 3 — Extensión lee Biofile (background automático)
 1. La extensión está instalada en los PCs de admisiones (los que tienen Biofile abierto).
-2. La extensión monitorea la pestaña que tiene abierta `AtencionesSeguimiento.aspx` (URL: `https://ipscertimedic.biofile.com.co/Factura/AtencionesSeguimiento.aspx`).
+2. La extensión monitorea la pestaña que tiene abierta `AtencionesSeguimiento.aspx` (URL: `https://SUBDOMINIO.biofile.com.co/Factura/AtencionesSeguimiento.aspx`).
 3. Cada 60 segundos (o al detectar cambios), la extensión:
    a. Lee `#LoginName` para saber qué usuario está logueado en Biofile.
    b. Simula clic en `#B_BH_TdBuscar` para actualizar la tabla del día.

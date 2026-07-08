@@ -1,7 +1,7 @@
 {
-  "name": "turnero-certimedic",
+  "name": "turnero",
   "version": "1.0.0",
-  "description": "Sistema de gestión de turnos CertiMedic",
+  "description": "Sistema de gestión de turnos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
