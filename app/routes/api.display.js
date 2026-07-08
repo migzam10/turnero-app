@@ -23,7 +23,10 @@ router.get('/activos', async (req, res) => {
 
         const { rows: profesionales } = await query(
             `SELECT ap.id, ap.numero_identificacion, ap.nombre_profesional, ap.consultorio_profesional, ap.area,
-                    COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
+                    COALESCE(
+                        pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
+                        pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
+                        ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc
                  ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
