@@ -722,15 +722,6 @@
             }
         }
 
-        // Devuelve el anuncio activo al FRENTE de la cola si no es el mismo que se va a mostrar,
-        // para no perderlo cuando un "Sonar" interrumpe el centro. Deja llamadoActivo en null.
-        function rescatarActivo(esMismo) {
-            if (estado.llamadoActivo && !esMismo(estado.llamadoActivo)) {
-                estado.colaCalls.unshift(estado.llamadoActivo);
-            }
-            estado.llamadoActivo = null;
-        }
-
         // Cancela inmediatamente la visualización de un llamado de admisiones (timer + cola).
         // Se identifica por id de paciente o, en su defecto, por módulo.
         function cancelarLlamadoAdmision(id, modulo) {
@@ -769,8 +760,8 @@
             socket.emit('heartbeat', { terminalId: TERMINAL_ID, audioOk });
         }, 30000);
 
-        // Profesional solicita volver a sonar. Igual que admisiones: además del pulso lateral,
-        // toma el centro (para el paciente distraído en otra sala), rescatando el anuncio activo.
+        // Profesional solicita volver a sonar: pulsa las tarjetas laterales y, para el centro,
+        // se encola como un llamado normal (respeta la cola, no interrumpe el anuncio activo).
         socket.on('display:sonar', (data) => {
             const prof = data.nombre_profesional;
             if (prof) {
@@ -785,15 +776,12 @@
                 });
             }
 
-            // Rescatar el anuncio en curso (si es otro) y quitar instancias previas sin id de
-            // este mismo profesional antes de mostrar al frente.
-            rescatarActivo(c => c.tipo === 'profesional' && c.id == null &&
-                c.nombre_profesional === prof && c.nombre_paciente === data.nombre_paciente);
+            // Sonar respeta la cola como Llamar: se encola (al final) y NO interrumpe el anuncio
+            // en curso. Se descartan instancias previas de este profesional en la cola para no
+            // duplicar si se presiona Sonar varias veces.
             estado.colaCalls = estado.colaCalls.filter(c =>
                 !(c.tipo === 'profesional' && c.id == null && c.nombre_profesional === prof));
-            clearTimeout(estado.progresoTimer);
-            clearTimeout(estado.beepFinalTimer);
-            mostrarLlamado({
+            encolarLlamado({
                 tipo: 'profesional', id: null,
                 nombre_profesional: prof,
                 nombre_paciente: data.nombre_paciente,
@@ -814,8 +802,8 @@
         });
 
         // Admisiones solicita volver a sonar la alerta de un paciente ya llamado.
-        // Replica de inmediato la alerta (audio + centro), igual que "Sonar" de Profesionales:
-        // el paciente salta al frente y suena el timbre sin pasar por la cola de anuncios.
+        // Igual que "Sonar" de Profesionales: se encola y respeta la cola de anuncios,
+        // sin interrumpir el que esté sonando.
         socket.on('admision:sonar', (p) => {
             const nombre = p.nombre_completo || [p.primer_nombre, p.segundo_nombre, p.primer_apellido, p.segundo_apellido].filter(Boolean).join(' ');
             const modulo = p.modulo_admision || 'Admisiones';
@@ -823,13 +811,10 @@
             if (modulo) estado.modulos[modulo] = { nombre_paciente: nombre, estado: 'llamando' };
             renderModulos();
 
-            // Rescata el anuncio en curso (si es otro paciente) para no perderlo, descarta
-            // instancias previas de este paciente y lo muestra al frente.
-            rescatarActivo(c => c.tipo === 'admision' && c.id === p.id);
+            // Sonar respeta la cola como Llamar: se encola y NO corta el anuncio en curso.
+            // Se descartan instancias previas de este paciente para no duplicar.
             estado.colaCalls = estado.colaCalls.filter(c => !(c.tipo === 'admision' && c.id === p.id));
-            clearTimeout(estado.progresoTimer);
-            clearTimeout(estado.beepFinalTimer);
-            mostrarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
+            encolarLlamado({ tipo: 'admision', id: p.id, modulo, nombre_paciente: nombre, destino: modulo });
         });
 
         // Admisiones confirma ingreso a Biofile
