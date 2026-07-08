@@ -841,9 +841,12 @@
             const consultorio = a.consultorio || a.consultorio_profesional;
             const prof = a.nombre_profesional;
 
-            // Deduplicar SOLO por id: si esta misma asignación ya estaba anunciada, se quita
-            // (no se toca a otros pacientes del mismo profesional en consultorio multipaciente).
-            cancelarLlamadoAsignacion(a.id, prof);
+            // Deduplicar SOLO por id: si esta misma asignación ya estaba anunciada, se quita.
+            // Se pasa prof=null a propósito para NO tocar los "Sonar" en cola (van con id null):
+            // Llamar y Sonar comparten la misma cola y no deben pisarse entre sí. La coincidencia
+            // por nombre queda solo para 'asignacion:cancelado' (al cancelar el paciente sí se
+            // limpia también su Sonar).
+            cancelarLlamadoAsignacion(a.id, null);
 
             if (a.id != null) {
                 estado.consultorios[a.id] = {
