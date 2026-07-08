@@ -242,7 +242,10 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
 
         // Obtener nombre del paciente para el display
         const { rows: conNombre } = await query(
-            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
+            `SELECT COALESCE(
+                    pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
+                    pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
+                    ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
              WHERE ap.id = $1`,
@@ -285,7 +288,10 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
 
         const { rows: conNombre } = await query(
-            `SELECT COALESCE(pc.primer_nombre || ' ' || pc.primer_apellido, ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
+            `SELECT COALESCE(
+                    pc.primer_nombre || ' ' || COALESCE(pc.segundo_nombre || ' ','') ||
+                    pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
+                    ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
              LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
              WHERE ap.id = $1`,
