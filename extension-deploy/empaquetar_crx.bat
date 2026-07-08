@@ -1,28 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
-title Empaquetar extension (.crx) - Turnero CertiMedic
+title Empaquetar extensiones (.crx) - Turnero
 
 REM ============================================================
-REM  Genera turnero.crx a partir de la carpeta ..\extension
-REM  usando la llave de firma turnero_extension.pem.
-REM  Se ejecuta UNA sola vez en tu PC (no en los terminales).
-REM  Requiere tener Chrome o Edge instalado.
+REM  Genera biofile-sync.crx y biofile-injector.crx a partir de
+REM  ..\extension\Biofile-Sync y ..\extension\Biofile-Injector,
+REM  firmadas con sus llaves .pem (esta carpeta).
+REM  Se ejecuta UNA vez en tu PC (no en los terminales).
+REM  Requiere Chrome o Edge, y haber creado el config.js de cada
+REM  extension (ver LEEME_EXTENSION.txt, Parte 1).
 REM ============================================================
 
 cd /d "%~dp0"
-set "EXT_DIR=%~dp0..\extension"
-set "KEY=%~dp0turnero_extension.pem"
-
-if not exist "%EXT_DIR%\manifest.json" (
-    echo [ERROR] No se encuentra la carpeta de la extension en:
-    echo    %EXT_DIR%
-    goto :fin
-)
-if not exist "%KEY%" (
-    echo [ERROR] No se encuentra la llave de firma:
-    echo    %KEY%
-    goto :fin
-)
 
 REM --- Buscar Chrome o Edge ---
 set "BROWSER="
@@ -39,24 +28,40 @@ if not defined BROWSER (
     goto :fin
 )
 echo Usando: !BROWSER!
+echo.
 
-echo Empaquetando...
-"!BROWSER!" --pack-extension="%EXT_DIR%" --pack-extension-key="%KEY%"
+call :pack "Biofile-Sync"     "biofile-sync.crx"
+call :pack "Biofile-Injector" "biofile-injector.crx"
 
-REM Chrome/Edge generan el .crx junto a la carpeta, con el nombre de la carpeta (extension.crx)
-set "GEN_CRX=%~dp0..\extension.crx"
-if exist "%GEN_CRX%" (
-    move /Y "%GEN_CRX%" "%~dp0turnero.crx" >nul
-    echo.
-    echo [OK] Generado:  %~dp0turnero.crx
-    echo.
-    echo SIGUIENTE PASO: copia turnero.crx y updates.xml a la carpeta
-    echo 'public' del servidor (donde quedo instalado el turnero), y
-    echo edita updates.xml reemplazando __SERVIDOR__ por IP:PUERTO.
-) else (
-    echo [ADVERTENCIA] No se encontro el .crx generado. Revisa si el
-    echo navegador mostro algun error arriba.
+echo.
+echo [OK] Copia estos 3 archivos a la carpeta 'public' del servidor:
+echo      biofile-sync.crx   biofile-injector.crx   updates.xml
+echo Y edita updates.xml reemplazando __SERVIDOR__ por IP:PUERTO.
+goto :fin
+
+REM --- Subrutina: empaqueta %~1 (carpeta) y renombra el .crx a %~2 ---
+:pack
+set "DIR=%~dp0..\extension\%~1"
+set "PEM=%~dp0%~1.pem"
+if not exist "%DIR%\manifest.json" (
+    echo [ERROR] Falta %DIR%\manifest.json
+    exit /b
 )
+if not exist "%PEM%" (
+    echo [ERROR] Falta la llave de firma:  %PEM%
+    exit /b
+)
+echo Empaquetando %~1 ...
+"!BROWSER!" --pack-extension="%DIR%" --pack-extension-key="%PEM%"
+REM Chrome/Edge generan <carpeta>.crx junto a la carpeta
+set "GEN=%~dp0..\extension\%~1.crx"
+if exist "%GEN%" (
+    move /Y "%GEN%" "%~dp0%~2" >nul
+    echo   [OK] %~2
+) else (
+    echo   [ADVERTENCIA] no se genero el .crx de %~1 (mira si hubo error arriba)
+)
+exit /b
 
 :fin
 echo.

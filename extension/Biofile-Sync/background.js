@@ -231,7 +231,7 @@ async function getTerminalId() {
 }
 
 async function ejecutarSync() {
-    const tabs = await chrome.tabs.query({ url: '*://ipscertimedic.biofile.com.co/*PacientesSeguimiento*' });
+    const tabs = await chrome.tabs.query({ url: '*://*.biofile.com.co/*PacientesSeguimiento*' });
     if (tabs.length === 0) return { error: 'No hay pestaña de Biofile abierta en PacientesSeguimiento' };
 
     let results;

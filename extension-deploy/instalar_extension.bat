@@ -1,16 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
-title Instalar extension - Turnero CertiMedic (terminal)
+title Instalar extensiones - Turnero (terminal)
 
 REM ============================================================
-REM  Fuerza la instalacion de la extension Turnero CertiMedic en
-REM  Chrome y Edge de ESTE PC terminal, via politicas de registro.
-REM  La extension queda fija (no se puede quitar) y se reinstala
-REM  sola si la borran. Se actualiza desde el servidor turnero.
-REM  Ejecutar en CADA PC terminal de admisiones, como administrador.
+REM  Fuerza la instalacion de las DOS extensiones del Turnero
+REM  (Biofile-Sync y Biofile-Injector) en Chrome y Edge de ESTE
+REM  PC, via politicas de registro. Quedan fijas (no se pueden
+REM  quitar), se reinstalan solas y se actualizan desde el servidor.
+REM  Ejecutar en CADA PC de admisiones, como administrador.
 REM ============================================================
 
-set "EXTID=cnjjkmpamkklleaplpjhompomkbilcag"
+set "ID_SYNC=ecgjdgihieabgheihfahojkoapopjkjj"
+set "ID_INJ=bjogofdcbpmglacnhnbkbphkbomhnkdl"
 
 REM --- Pedir permisos de administrador (registro HKLM) ---
 net session >nul 2>&1
@@ -21,7 +22,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo ============================================================
-echo    INSTALAR EXTENSION TURNERO - PC TERMINAL
+echo    INSTALAR EXTENSIONES TURNERO - PC TERMINAL
 echo ============================================================
 echo.
 echo Escribe la IP y el puerto del SERVIDOR turnero.
@@ -33,32 +34,31 @@ set /p "SERVER=Servidor (IP:PUERTO): "
 if not defined SERVER goto ask_server
 
 set "UPDURL=http://!SERVER!/updates.xml"
-set "FORCEVAL=!EXTID!;!UPDURL!"
 set "SRCVAL=http://!SERVER!/*"
 
-echo.
-echo Configurando Google Chrome...
-reg add "HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" /v 1 /t REG_SZ /d "!FORCEVAL!" /f >nul
-reg add "HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallSources"   /v 1 /t REG_SZ /d "!SRCVAL!"   /f >nul
-
-echo Configurando Microsoft Edge...
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" /v 1 /t REG_SZ /d "!FORCEVAL!" /f >nul
-reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallSources"   /v 1 /t REG_SZ /d "!SRCVAL!"   /f >nul
+for %%B in (
+    "HKLM\SOFTWARE\Policies\Google\Chrome"
+    "HKLM\SOFTWARE\Policies\Microsoft\Edge"
+) do (
+    echo Configurando %%~nxB ...
+    reg add "%%~B\ExtensionInstallForcelist" /v 1 /t REG_SZ /d "!ID_SYNC!;!UPDURL!" /f >nul
+    reg add "%%~B\ExtensionInstallForcelist" /v 2 /t REG_SZ /d "!ID_INJ!;!UPDURL!"  /f >nul
+    reg add "%%~B\ExtensionInstallSources"   /v 1 /t REG_SZ /d "!SRCVAL!"           /f >nul
+)
 
 echo.
 echo ============================================================
-echo    LISTO
+echo    LISTO  -  apuntando a  !UPDURL!
 echo ============================================================
-echo  Extension forzada apuntando a:  !UPDURL!
-echo.
 echo  IMPORTANTE:
 echo   1. Cierra COMPLETAMENTE Chrome y Edge (todas las ventanas)
-echo      y vuelve a abrirlos. La extension aparecera sola en unos
-echo      segundos (puede tardar hasta 1-2 min la primera vez).
-echo   2. El servidor turnero debe estar encendido y debe tener
-echo      turnero.crx y updates.xml en su carpeta 'public'.
+echo      y vuelve a abrirlos. Las extensiones aparecen solas en
+echo      unos segundos (hasta 1-2 min la primera vez).
+echo   2. El servidor turnero debe estar encendido y tener en su
+echo      carpeta 'public':  biofile-sync.crx, biofile-injector.crx
+echo      y updates.xml.
 echo   3. Verifica en chrome://extensions o edge://extensions que
-echo      aparece "Turnero CertiMedic" instalada por politica.
+echo      aparecen las 2, "instaladas por una politica de empresa".
 echo ============================================================
 echo.
 pause

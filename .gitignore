@@ -5,16 +5,19 @@ npm-debug.log*
 .DS_Store
 .claude/
 
-# Llave privada de firma de la extension (NO subir nunca) y .crx generado
+# Llaves privadas de firma de las extensiones (NO subir nunca) y .crx generados
 extension-deploy/*.pem
 extension-deploy/*.crx
-installer/nssm.exe
+# .crx y updates.xml generados que se copian al public del servidor (no versionar)
+app/public/*.crx
+app/public/updates.xml
 
 # Config local de extensiones (IP y clave secreta) — usar config.example.js como plantilla
 extension/**/config.js
 
 # Capturas de pantalla locales
 docs/Capturas/
+docs/paginas-web/
 
 # DOM de ejemplo de Biofile (muestras locales para desarrollo, no van al repo ni al server)
 DOM/
@@ -24,3 +27,8 @@ sincronizar.sh
 
 # Backups de la BD generados por scripts/backup-db.sh
 backups/
+
+# Binarios/modelos de TTS (piper) y cache de audio generado en el servidor.
+# **/ cubre tanto la raíz como app/vendor (según desde dónde se corra setup-tts).
+**/vendor/tts/
+**/vendor/tts-cache/

@@ -1,18 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Turnero CertiMedic — Biofile Sync",
+  "name": "Turnero — Biofile Sync",
   "version": "1.0.0",
   "description": "Sincroniza pacientes de Biofile con el sistema de turnos",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4RcLfQaT7s3/Z5dY+kXyZ4oB61/VghXsdE4gmdz5lReF8ivXqOWiyQakISKlSkpymfIFfPo0iHfuH+80a/wj8e9zxzblind6LrjB3zPhtrkY04sJJeyvoOU9d/8cGde/eKAbnIz29iif/FBBhKCH8RQTvr3ltlsoKZQ9Ig6OCer4ybN331IklzOARM0EZBIbrU7cYE1Vuo6rVmFtclDlU2mkuia+w2vnEgVwAnWYqlbJ6fWFjNHFjBrThzZKsF3Yv5z6fYOOf5I7URSdn/bvnJ4fHugAaZTetDUhLVjBsFxyKonyIO+EOH7wYjAMA2UquiZJJ5bTpzeU/v/dvLteCwIDAQAB",
-  "permissions": ["alarms", "storage", "tabs", "scripting"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuc6/6VdSLrnIij35cKlTHzy7B/ajiZJT+FCnSneibU05wUBYdUX+LWV2y1S6bOeYpCaYBiJWJctf0UG1d+Tmp6dkymj/gZ2Cf0hCdH/YKwoUSH/rWjhZ5v4UKh7k07uz1H/4nXzeCcEBY0TSNmL5Qvq20GePDJntUmXAhtjUI8zBCPnqtchaDVXR9aj8MmfZ9nR0EqZFDkv11fy9w5aUNjMCcyzlmHtQeYWmp9EZJnSpZMVJrksAvbS8Z199EV8/rGUZzNqb3uX8TvchrAsPAr/juq6GS06XsQSoxfpUCEUWnRZCOQ0v4QCIdEdlQTnCgutJPhKRwsa5wXvAuZ6JSwIDAQAB",
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
   "host_permissions": [
-    "*://ipscertimedic.biofile.com.co/*"
+    "*://*.biofile.com.co/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Turnero CertiMedic"
+    "default_title": "Turnero"
   }
 }
