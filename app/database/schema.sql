@@ -98,6 +98,10 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Logo del Display en formato data URL (vacío = ícono por defecto)'),
     ('duracion_anuncio_seg',    '8',
      'Segundos que dura cada anuncio en la pantalla TV (4-30)'),
+    ('voz_habilitada',          'false',
+     'Anuncio por voz (TTS) en las pantallas TV'),
+    ('voz_plantilla',           'Turno para {nombre}. Diríjase a {destino}.',
+     'Frase del anuncio por voz; tokens {nombre} y {destino}'),
     ('version_db',              '1',
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;

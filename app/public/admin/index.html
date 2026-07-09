@@ -90,6 +90,12 @@ tr:hover td { background: #f8fafc; }
 .config-val:focus { outline: none; border-color: var(--azul2); }
 .config-desc { font-size: .72rem; color: var(--gris); margin-top: 4px; }
 .btn-guardar-config { background: var(--verde); color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: .82rem; font-weight: 600; cursor: pointer; margin-top: 6px; }
+.switch { position: relative; display: inline-block; width: 46px; height: 26px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-slider { position: absolute; inset: 0; cursor: pointer; background: var(--borde); border-radius: 26px; transition: .2s; }
+.switch-slider::before { content: ''; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .2s; }
+.switch input:checked + .switch-slider { background: var(--verde); }
+.switch input:checked + .switch-slider::before { transform: translateX(20px); }
 
 /* Terminal activo/inactivo */
 .terminal-activo { color: var(--verde); font-weight: 700; }
@@ -1106,11 +1112,21 @@ async function cargarConfig() {
     const grid = document.getElementById('config-grid');
     grid.textContent = '';
     try {
+        // La edición Plus decide si la voz (TTS) se muestra como parámetro editable.
+        let vozIncluida = false;
+        try {
+            const rp = await fetch('/api/config/publica');
+            if (rp.ok) vozIncluida = (await rp.json()).voz_incluida === true;
+        } catch {}
         const resp = await fetchAdmin('/api/admin/config');
         const configs = await resp.json();
         // titulo_sufijo y display_logo tienen controles dedicados en "Personalización".
         // dias_retener_datos y version_db son parámetros internos que no se editan aquí.
         const ocultas = new Set(['titulo_sufijo', 'display_logo', 'dias_retener_datos', 'version_db']);
+        // En la edición Básica la voz no se vende: se ocultan sus parámetros (candado de licencia).
+        if (!vozIncluida) { ocultas.add('voz_habilitada'); ocultas.add('voz_plantilla'); }
+        // Estas claves son sí/no: se muestran como interruptor (slider), no como texto.
+        const booleanas = new Set(['sonido_habilitado', 'voz_habilitada']);
         configs.filter(c => !ocultas.has(c.clave)).forEach(c => {
             const item = document.createElement('div');
             item.className = 'config-item';
@@ -1118,6 +1134,27 @@ async function cargarConfig() {
             const key = document.createElement('div');
             key.className = 'config-key';
             key.textContent = c.clave;
+
+            const desc = document.createElement('div');
+            desc.className = 'config-desc';
+            desc.textContent = c.descripcion || '';
+
+            if (booleanas.has(c.clave)) {
+                // Interruptor tipo slider: guarda al instante ('true'/'false').
+                const sw = document.createElement('label');
+                sw.className = 'switch';
+                sw.style.marginBottom = '6px';
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.checked = c.valor === 'true';
+                chk.addEventListener('change', () => guardarConfigValor(c.clave, chk.checked ? 'true' : 'false'));
+                const sl = document.createElement('span');
+                sl.className = 'switch-slider';
+                sw.append(chk, sl);
+                item.append(key, sw, desc);
+                grid.appendChild(item);
+                return;
+            }
 
             const input = document.createElement('input');
             input.className = 'config-val';
@@ -1131,10 +1168,6 @@ async function cargarConfig() {
                 input.value = c.valor || '';
             }
 
-            const desc = document.createElement('div');
-            desc.className = 'config-desc';
-            desc.textContent = c.descripcion || '';
-
             const btn = document.createElement('button');
             btn.className = 'btn-guardar-config';
             btn.dataset.clave = c.clave;
@@ -1142,7 +1175,27 @@ async function cargarConfig() {
             btn.addEventListener('click', () => guardarConfig(c.clave, btn));
 
             item.append(key, input, desc, btn);
+            // La frase de voz lleva un botón extra para escucharla sin llamar a nadie.
+            if (c.clave === 'voz_plantilla') {
+                const probar = document.createElement('button');
+                probar.className = 'btn-actualizar';
+                probar.textContent = 'Probar';
+                probar.style.marginLeft = '8px';
+                probar.addEventListener('click', probarVoz);
+                item.appendChild(probar);
+            }
             grid.appendChild(item);
+        });
+    } catch {}
+}
+
+// Guarda una clave con un valor dado (usado por los interruptores tipo slider).
+async function guardarConfigValor(clave, valor) {
+    try {
+        await fetchAdmin('/api/admin/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clave, valor })
         });
     } catch {}
 }
@@ -1202,6 +1255,11 @@ function pintarPreviewLogo(dataUrl) {
         span.textContent = 'Sin logo';
         box.appendChild(span);
     }
+}
+
+// Reproduce una frase de ejemplo con el endpoint TTS para probar la voz sin llamar a nadie.
+function probarVoz() {
+    new Audio('/api/tts?texto=' + encodeURIComponent('Turno para JUAN PEREZ. Diríjase a Consultorio 1')).play().catch(() => {});
 }
 
 async function guardarTituloSufijo() {
