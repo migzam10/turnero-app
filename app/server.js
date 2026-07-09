@@ -44,6 +44,7 @@ app.use('/api/extension',   require('./routes/api.extension'));
 app.use('/api/admin',       require('./routes/api.admin'));
 app.use('/api/config',      require('./routes/api.config'));
 app.use('/api/display',     require('./routes/api.display'));
+app.use('/api/tts',         require('./routes/api.tts'));
 
 // Ruta de salud
 app.get('/health', async (req, res) => {

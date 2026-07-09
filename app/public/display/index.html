@@ -471,6 +471,8 @@
             llamadoActivo: null,
             progresoTimer: null,
             beepFinalTimer: null, // segundo timbre, ~1.5s antes de que el anuncio desaparezca
+            vozTimer: null,       // retardo entre el timbre y el anuncio por voz (TTS)
+            vozAudio: null,       // única instancia Audio reutilizada por la voz
             progresoStart: null,
         };
 
@@ -478,6 +480,13 @@
 
         // Estado de audio/energía. sonidoHabilitado por defecto true hasta leer la config pública.
         let sonidoHabilitado = true;
+        // Anuncio por voz (TTS). Defaults seguros: apagado y frase estándar hasta leer la config.
+        const VOZ_PLANTILLA_DEFECTO = 'Turno para {nombre}. Diríjase a {destino}.';
+        let vozHabilitada = false;
+        let vozPlantilla = VOZ_PLANTILLA_DEFECTO;
+        // Candado de licencia (edición Plus). En Básica la voz no existe aunque el
+        // cliente prenda 'voz_habilitada' en la BD. Lo dicta el servidor (voz_incluida).
+        let vozIncluida = false;
         let audioOk = false;       // ¿el AudioContext está 'running'? Se reporta en el heartbeat.
         let wakeLock = null;       // WakeLockSentinel para evitar que la TV apague la pantalla.
         let audioYaActivado = false; // fullscreen/wakelock se piden una sola vez, en el primer gesto.
@@ -640,6 +649,13 @@
         // ── Cola de anuncios ────────────────────────────────────────────
         function encolarLlamado(llamado) {
             estado.colaCalls.push(llamado);
+            // Precalienta la caché del TTS para que la reproducción sea instantánea al mostrarlo.
+            if (vozIncluida && vozHabilitada && sonidoHabilitado) {
+                const frase = (vozPlantilla || '')
+                    .replace('{nombre}', llamado.nombre_paciente || '')
+                    .replace('{destino}', llamado.destino || '');
+                fetch('/api/tts?texto=' + encodeURIComponent(frase)).catch(() => {});
+            }
             if (!estado.llamadoActivo) procesarSiguiente();
             renderColaSiguiente();
         }
@@ -654,10 +670,22 @@
             renderColaSiguiente();
         }
 
+        // Anuncio por voz vía /api/tts. Solo si la voz Y el sonido están habilitados.
+        // Reutiliza una única instancia Audio: si hay una sonando la corta, así dos llamados
+        // seguidos no se encinan. El autoplay ya fue desbloqueado por el overlay de audio.
+        function hablar(nombre, destino) {
+            if (!vozIncluida || !vozHabilitada || !sonidoHabilitado) return;
+            const frase = (vozPlantilla || '').replace('{nombre}', nombre || '').replace('{destino}', destino || '');
+            if (estado.vozAudio) { estado.vozAudio.pause(); }
+            estado.vozAudio = new Audio('/api/tts?texto=' + encodeURIComponent(frase));
+            estado.vozAudio.play().catch(() => {});
+        }
+
         function mostrarLlamado(llamado) {
             estado.llamadoActivo = llamado;
             clearTimeout(estado.progresoTimer);
             clearTimeout(estado.beepFinalTimer);
+            clearTimeout(estado.vozTimer);
 
             const el = document.getElementById('llamado-actual');
             const sinEl = document.getElementById('sin-llamado');
@@ -685,15 +713,18 @@
             }, 50);
 
             beepDoble();
+            // Voz ~0.75s después, para no pisar el triple timbre (beepDoble dura ~680ms).
+            estado.vozTimer = setTimeout(() => hablar(llamado.nombre_paciente, llamado.destino), 750);
 
             estado.progresoTimer = setTimeout(procesarSiguiente, duracionLlamado);
-            // Segundo timbre 1.5s antes de que el anuncio desaparezca.
+            // Segundo timbre 1.5s antes de que el anuncio desaparezca (NO repite la voz).
             estado.beepFinalTimer = setTimeout(beepDoble, duracionLlamado - 1500);
         }
 
         function ocultarLlamado() {
             estado.llamadoActivo = null;
             clearTimeout(estado.beepFinalTimer);
+            clearTimeout(estado.vozTimer);
             document.getElementById('llamado-actual').style.display = 'none';
             document.getElementById('sin-llamado').style.display = 'flex';
             document.getElementById('progreso-bar').style.width = '0';
@@ -957,6 +988,12 @@
                 sonidoHabilitado = cfg.sonido_habilitado !== false;
                 const seg = Number(cfg.duracion_anuncio_seg);
                 if (Number.isFinite(seg) && seg > 0) duracionLlamado = seg * 1000;
+                // Edición Plus (candado de licencia): sin esto la voz no existe.
+                vozIncluida = cfg.voz_incluida === true;
+                // Anuncio por voz: apagado salvo que la config lo habilite explícitamente.
+                vozHabilitada = cfg.voz_habilitada === true || cfg.voz_habilitada === 'true';
+                vozPlantilla = (typeof cfg.voz_plantilla === 'string' && cfg.voz_plantilla.trim())
+                    ? cfg.voz_plantilla : VOZ_PLANTILLA_DEFECTO;
             } catch {
                 sonidoHabilitado = true;
             }
