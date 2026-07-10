@@ -1,10 +1,11 @@
-// URL cargada desde config.js (ver config.example.js para configurar)
-const URL_TURNERO = `${CONFIG.SERVER_URL}/api/extension/pendientes`;
-
+// Servidor/secret: config.js por defecto, con override opcional desde el popup (⚙).
 document.addEventListener("DOMContentLoaded", () => {
     const btnActualizar = document.getElementById("btn-actualizar");
     btnActualizar.addEventListener("click", cargarPacientes);
-    
+
+    // Mini-panel del engranaje (override de Servidor/Secret sobre config.js).
+    initConfigUI();
+
     // Carga inicial
     cargarPacientes();
 });
@@ -17,12 +18,14 @@ async function cargarPacientes() {
     btnActualizar.disabled = true;
     btnActualizar.style.opacity = "0.5";
     
+    let cfg;
     try {
-        const resp = await fetch(URL_TURNERO, {
+        cfg = await getEffectiveConfig();
+        const resp = await fetch(`${cfg.SERVER_URL}/api/extension/pendientes`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
-                'X-Extension-Secret': CONFIG.EXTENSION_SECRET
+                'X-Extension-Secret': cfg.EXTENSION_SECRET
             },
             cache: 'no-store' // Evita lectura de caché corrupta
         });
@@ -70,10 +73,11 @@ async function cargarPacientes() {
         });
 
     } catch (err) {
+        const destino = cfg ? cfg.SERVER_URL : '(servidor)';
         listaEl.innerHTML = `
             <div class="loader" style="color:#dc2626;">
                 <b>Error de conexión</b><br>
-                Verifique que el servidor local esté ejecutándose en 192.168.26.110:3000.
+                Verifique que el servidor esté ejecutándose en ${destino}.
                 <div class="error-msg">${err.message}</div>
             </div>`;
     } finally {

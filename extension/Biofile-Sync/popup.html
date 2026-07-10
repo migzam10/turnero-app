@@ -97,7 +97,22 @@
   <header>
     <span>Turnero — Biofile Sync</span>
     <span class="badge idle" id="badge">...</span>
+    <button id="cfg-toggle" title="Servidor / secret" style="width:auto;margin:0 0 0 6px;padding:0 4px;background:transparent;color:rgba(255,255,255,.6);font-size:13px;">⚙</button>
   </header>
+
+  <section id="cfg-panel" style="display:none; background:#eef2f7;">
+    <div style="font-weight:600;font-size:11px;color:#555;margin-bottom:6px;">Conexión — vacío = usa config.js</div>
+    <input id="cfg-url" type="text" placeholder="http://IP:3000" autocomplete="off"
+           style="width:100%;padding:6px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">
+    <input id="cfg-secret" type="text" placeholder="(config.js)" autocomplete="off"
+           style="width:100%;padding:6px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:12px;">
+    <div style="display:flex;gap:6px;">
+      <button id="cfg-save" style="margin-top:0;flex:1;">Guardar</button>
+      <button id="cfg-reset" style="margin-top:0;flex:1;background:#888;">Restablecer</button>
+    </div>
+    <div id="cfg-hint" style="font-size:10px;color:#666;margin-top:6px;"></div>
+    <div id="cfg-status" style="font-size:10px;color:#43a047;min-height:12px;"></div>
+  </section>
 
   <section>
     <div class="stats">
@@ -108,10 +123,13 @@
     </div>
     <div class="snapshot" id="snapshot"></div>
     <div class="last-sync" id="last-sync">Sin sincronizaciones aún</div>
+    <div class="last-sync" id="attempt"></div>
     <button id="btn-sync">Sincronizar ahora</button>
     <div class="msg" id="msg"></div>
   </section>
 
+  <script src="config.js"></script>
+  <script src="config-override.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

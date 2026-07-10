@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Turnero — Biofile Sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sincroniza pacientes de Biofile con el sistema de turnos",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuc6/6VdSLrnIij35cKlTHzy7B/ajiZJT+FCnSneibU05wUBYdUX+LWV2y1S6bOeYpCaYBiJWJctf0UG1d+Tmp6dkymj/gZ2Cf0hCdH/YKwoUSH/rWjhZ5v4UKh7k07uz1H/4nXzeCcEBY0TSNmL5Qvq20GePDJntUmXAhtjUI8zBCPnqtchaDVXR9aj8MmfZ9nR0EqZFDkv11fy9w5aUNjMCcyzlmHtQeYWmp9EZJnSpZMVJrksAvbS8Z199EV8/rGUZzNqb3uX8TvchrAsPAr/juq6GS06XsQSoxfpUCEUWnRZCOQ0v4QCIdEdlQTnCgutJPhKRwsa5wXvAuZ6JSwIDAQAB",
   "permissions": [
@@ -16,8 +16,18 @@
   "background": {
     "service_worker": "background.js"
   },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Turnero"
+    "default_title": "Turnero",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   }
 }
