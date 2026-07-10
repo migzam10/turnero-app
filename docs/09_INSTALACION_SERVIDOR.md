@@ -94,6 +94,10 @@ NODE_ENV=production
 
 # Seguridad — debe coincidir con el config.js de las DOS extensiones
 EXTENSION_SECRET=CLAVE_NUEVA_ALEATORIA_DE_PRODUCCION
+
+# Edición (licencia): basica = solo sonido | plus = sonido + voz TTS.
+# Si se omite, se asume 'basica'. Para vender la voz, poner 'plus' y ver Parte C.
+EDICION=basica
 ```
 **Nunca** reutilizar las claves de desarrollo. La clave del panel Admin (`clave_admin`)
 NO va en `.env`: se cambia desde **Admin → Configuración** tras el primer arranque
@@ -142,12 +146,14 @@ Restaurar: `pg_restore -U turnero_user -d turnero --clean archivo.dump`
 
 El sistema puede **anunciar el nombre por voz** además del timbre. El servidor genera el
 WAV del nombre (`GET /api/tts?texto=…`), lo cachea en `vendor/tts-cache/`, y la TV solo lo
-reproduce (así suena igual en cualquier pantalla). Se enciende desde **Admin →
-Configuración** (`voz_habilitada`) y la frase se define en `voz_plantilla` (tokens
-`{nombre}` y `{destino}`).
+reproduce (así suena igual en cualquier pantalla). En **Admin → Configuración → Parámetros
+del sistema** se enciende con el interruptor `voz_habilitada` (botón **Probar** para
+escucharla) y la frase se define en `voz_plantilla` (tokens `{nombre}` y `{destino}`).
 
-> **Edición básica** = solo timbre → no configurar nada de esta parte.
-> **Edición Plus** = timbre + voz → configurar el motor abajo.
+> **Edición básica** (`EDICION=basica`) = solo timbre → no configurar nada de esta parte;
+> los parámetros de voz ni aparecen en Admin.
+> **Edición Plus** (`EDICION=plus` en el `.env`) = timbre + voz → configurar el motor abajo.
+> Sin `EDICION=plus`, `/api/tts` responde 403 aunque piper esté instalado (candado de licencia).
 
 **Motor de voz** (variable `TTS_ENGINE`), intercambiable:
 
@@ -161,13 +167,16 @@ Configuración** (`voz_habilitada`) y la frase se define en `voz_plantilla` (tok
 - Windows: `powershell .\scripts\setup-tts.ps1`
 - Docker/Linux: `docker compose exec app bash scripts/setup-tts.sh`
 
-El script baja el binario + el modelo `es_ES-sharvard-medium` (voz femenina =
-`PIPER_SPEAKER=1`) e imprime las rutas. Poner en el `.env`:
+Sin argumentos baja el binario + el modelo por defecto `es_ES-sharvard-medium` (voz
+femenina = `PIPER_SPEAKER=1`). Para elegir otra voz en español, pasa su id como argumento
+(`... setup-tts.ps1 es_AR-daniela-high`); `... setup-tts.ps1 list` muestra el catálogo
+(España/México/Argentina). El script imprime las rutas para el `.env`:
 ```env
+EDICION=plus              # imprescindible: habilita la voz (candado de licencia)
 TTS_ENGINE=piper
 PIPER_BIN=.../vendor/tts/piper/piper
 PIPER_MODEL=.../vendor/tts/models/es_ES-sharvard-medium.onnx
-PIPER_SPEAKER=1            # voz femenina del modelo (tiene 2)
+PIPER_SPEAKER=1            # SOLO para sharvard (tiene 2 voces); quitar en las demás
 PIPER_LENGTH_SCALE=1.25    # ritmo (mayor = más lento)
 PIPER_SENTENCE_SILENCE=0.4
 ```
