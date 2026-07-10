@@ -10,10 +10,10 @@
 <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
   <!-- Biofile-Sync -->
   <app appid='ecgjdgihieabgheihfahojkoapopjkjj'>
-    <updatecheck codebase='http://__SERVIDOR__/biofile-sync.crx' version='1.0.0' />
+    <updatecheck codebase='http://__SERVIDOR__/biofile-sync.crx' version='1.1.0' />
   </app>
   <!-- Biofile-Injector -->
   <app appid='bjogofdcbpmglacnhnbkbphkbomhnkdl'>
-    <updatecheck codebase='http://__SERVIDOR__/biofile-injector.crx' version='1.0' />
+    <updatecheck codebase='http://__SERVIDOR__/biofile-injector.crx' version='1.1' />
   </app>
 </gupdate>

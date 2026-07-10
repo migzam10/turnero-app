@@ -1,4 +1,4 @@
-importScripts('config.js');
+importScripts('config.js', 'config-override.js');
 
 // Cadencia de sincronización. NUNCA por debajo de 15s para no disparar el rate-limit /
 // firewall de Biofile. chrome.alarms es el reemplazo fiable de setInterval en un service
@@ -14,14 +14,32 @@ chrome.runtime.onInstalled.addListener(programarAlarma);
 chrome.runtime.onStartup.addListener(programarAlarma);
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'sync') ejecutarSync();
+    if (alarm.name === 'sync') syncRegistrado();
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.tipo !== 'SYNC_AHORA') return;
-    ejecutarSync().then(sendResponse).catch(err => sendResponse({ error: err.message }));
+    syncRegistrado().then(sendResponse);
     return true;
 });
+
+// Ejecuta un sync y registra SIEMPRE el intento (éxito o fallo) en storage como 'lastAttempt',
+// con hora, servidor usado y error. Así el popup refleja el estado REAL en vivo y no se queda
+// mostrando el último "OK" viejo cuando el servidor es inalcanzable o el secret no corresponde.
+async function syncRegistrado() {
+    const cfg = await getEffectiveConfig();
+    const attempt = { ts: Date.now(), url: cfg.SERVER_URL, ok: false, error: null };
+    try {
+        const r = await ejecutarSync();
+        if (r && r.error) attempt.error = r.error; else attempt.ok = true;
+        await chrome.storage.local.set({ lastAttempt: attempt });
+        return r;
+    } catch (err) {
+        attempt.error = err?.message || String(err);
+        await chrome.storage.local.set({ lastAttempt: attempt });
+        return { error: attempt.error };
+    }
+}
 
 // =============================================================================
 // PASO 1 + PASO 4 — Refresco e ingesta del nuevo DOM (PacientesSeguimiento.aspx)
@@ -314,11 +332,13 @@ async function ejecutarSync() {
     // }
     // Respuesta: { ok, nuevos, actualizados, autocreados, reconciliados, errores }
     // ──────────────────────────────────────────────────────────────────────────────────────
-    const res = await fetch(`${CONFIG.SERVER_URL}/api/extension/sync`, {
+    // Servidor/secret efectivos: override del popup (chrome.storage) o, si está vacío, config.js.
+    const cfg = await getEffectiveConfig();
+    const res = await fetch(`${cfg.SERVER_URL}/api/extension/sync`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-extension-secret': CONFIG.EXTENSION_SECRET
+            'x-extension-secret': cfg.EXTENSION_SECRET
         },
         body: JSON.stringify({
             loginName: respuesta.loginName,
@@ -327,6 +347,14 @@ async function ejecutarSync() {
             pacientes: pacientesNorm
         })
     });
+
+    // Un 401/500 no lanza por sí solo: lo convertimos en error explícito (p. ej. secret que no
+    // corresponde al servidor) para que NO se guarde como si hubiera sido un sync exitoso.
+    if (!res.ok) {
+        let detalle = '';
+        try { detalle = (await res.json())?.error || ''; } catch { /* cuerpo no-JSON */ }
+        throw new Error(`servidor respondió ${res.status}${detalle ? ': ' + detalle : ''}`);
+    }
 
     const data = await res.json();
     // Guardamos también snapshotCompleto (lo que enviamos) y reconciliados (lo que el backend
