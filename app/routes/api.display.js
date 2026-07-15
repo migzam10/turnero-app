@@ -28,8 +28,7 @@ router.get('/activos', async (req, res) => {
                         pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
                         ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc
-                 ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.fecha = CURRENT_DATE AND ap.estado = 'llamando' AND ap.activo = true
              ORDER BY ap.hora_llamado`
         );

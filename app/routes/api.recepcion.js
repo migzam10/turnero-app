@@ -74,6 +74,10 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
 
         const fechaParam = fecha_nacimiento || '';
 
+        // Sin ON CONFLICT: cada registro es un INGRESO nuevo. El índice parcial
+        // uq_cola_shell_abierto garantiza a lo sumo un registro de recepción ABIERTO y sin
+        // OS por (fecha, cédula); si ya hay uno lanza 23505 y se responde 409. Si la
+        // atención previa quedó cerrada, la fila entra como un ingreso separado.
         const { rows } = await query(
             `INSERT INTO pacientes_cola
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
@@ -86,7 +90,6 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
                          ELSE TO_DATE($8, 'DD/MM/YYYY')
                      END,
                      $9,$10,$11)
-             ON CONFLICT (fecha, numero_identificacion) DO NOTHING
              RETURNING *`,
             [numero_identificacion, tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
@@ -94,14 +97,6 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
              fechaParam, sexoNorm, prioridad, terminalUUID]
         );
-
-        if (rows.length === 0) {
-            const { rows: existente } = await query(
-                `SELECT * FROM pacientes_cola WHERE fecha = CURRENT_DATE AND numero_identificacion = $1`,
-                [numero_identificacion]
-            );
-            return res.status(409).json({ error: 'ya_registrado', paciente: existente[0] });
-        }
 
         const io = req.app.get('io');
         io.to('recepcion').emit('paciente:nuevo', rows[0]);
@@ -117,6 +112,18 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
 
         return res.status(201).json(rows[0]);
     } catch (err) {
+        // 23505 en uq_cola_shell_abierto = ya hay un registro de recepción abierto y aún
+        // SIN vincular a una OS de Biofile. No se duplica; cuando ese registro se vincula
+        // a su OS (o se cierra), recepción puede volver a listar al paciente.
+        if (err.code === '23505') {
+            const { rows: existente } = await query(
+                `SELECT * FROM pacientes_cola
+                 WHERE fecha = CURRENT_DATE AND numero_identificacion = $1
+                   AND orden_servicio IS NULL AND NOT cerrado`,
+                [numero_identificacion]
+            );
+            return res.status(409).json({ error: 'ya_registrado', paciente: existente[0] });
+        }
         console.error('[recepcion/registrar]', err);
         return res.status(500).json({ error: 'db_error' });
     }

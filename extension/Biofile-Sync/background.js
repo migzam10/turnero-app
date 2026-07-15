@@ -113,6 +113,11 @@ async function refrescarYExtraer() {
         const numeroIdentificacion = celdaPaciente.querySelector('b')?.textContent.trim() || '';
         if (!/^\d{5,12}$/.test(numeroIdentificacion)) return;
 
+        // Orden de Servicio: aparece como "... - N°: OS:14518" en la misma celda. Es la
+        // LLAVE del ingreso: cada OS es una orden distinta (empresa/particular) y un mismo
+        // paciente puede tener varias el mismo día en filas separadas.
+        const ordenServicio = (celdaPaciente.textContent.match(/OS:\s*(\d+)/i) || [])[1] || null;
+
         // Nombre: nodo de texto que precede a <b> (primer segmento antes del <br>).
         const nombrePaciente = limpiar(celdaPaciente.innerHTML.split(/<br\s*\/?>/i)[0] || '');
 
@@ -133,6 +138,7 @@ async function refrescarYExtraer() {
 
             pacientes.push({
                 numeroIdentificacion,
+                ordenServicio,
                 nombrePaciente,
                 nombreProfesionalCrudo,
                 estado,
@@ -280,6 +286,7 @@ async function ejecutarSync() {
             const nombreProfesional = sanearNombreProfesional(p.nombreProfesionalCrudo);
             return {
                 numeroIdentificacion: p.numeroIdentificacion,
+                ordenServicio: p.ordenServicio || null,
                 nombrePaciente: p.nombrePaciente,
                 nombreProfesional,
                 columnaHeader: nombreProfesional,
@@ -292,10 +299,10 @@ async function ejecutarSync() {
         })
         // Descarta atenciones sin profesional real (p. ej. "(EXÁMENES COMPLEMENTARIOS)").
         .filter(p => p.nombreProfesional)
-        // Deduplica por (identificación + profesional): el upsert del backend colapsaría
-        // estas filas igual, así evitamos contarlas dos veces en el payload.
+        // Deduplica por (OS + profesional): así el mismo profesional en dos OS distintas NO
+        // se fusiona (son ingresos separados). Sin OS (fila atípica) cae a la cédula.
         .filter(p => {
-            const clave = `${p.numeroIdentificacion}|${p.columnaHeader}`;
+            const clave = `${p.ordenServicio || p.numeroIdentificacion}|${p.columnaHeader}`;
             if (vistos.has(clave)) return false;
             vistos.add(clave);
             return true;
@@ -320,6 +327,7 @@ async function ejecutarSync() {
     //   snapshotCompleto: boolean,                   // true ⇒ pacientes[] es snapshot autoritativo
     //   pacientes: [{                                // puede ser [] si snapshotCompleto:true (vacío real)
     //     numeroIdentificacion: string,              // ⟵ clave compuesta del delta (intacta)
+    //     ordenServicio:        string | null,       // ⟵ N° OS de Biofile = llave del ingreso
     //     columnaHeader:        string,              // ⟵ clave compuesta del delta (intacta)
     //     nombrePaciente:       string,
     //     nombreProfesional:    string,
