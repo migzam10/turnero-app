@@ -213,3 +213,50 @@ ALTER TABLE terminales
 ALTER TABLE terminales DROP CONSTRAINT IF EXISTS terminales_tipo_check;
 ALTER TABLE terminales ADD CONSTRAINT terminales_tipo_check
     CHECK (tipo IN ('recepcion','admisiones','profesional','display','admin'));
+
+-- ── Multi-ingreso por paciente/día, llaveado por OS (v8) ─────────────────────
+-- Un paciente puede tener VARIAS atenciones (ingresos) el mismo día. La unidad de
+-- ingreso es la ORDEN DE SERVICIO (OS) de Biofile: cada OS es de una empresa (o un
+-- particular) y puede haber varias a la vez. `orden_servicio` = la OS (NULL = registro
+-- de recepción aún no vinculado a una OS). `cerrado` marca esa OS terminada (admisión
+-- hecha + todos sus exámenes finalizados). Reabrir = volver `cerrado` a false cuando a
+-- la MISMA OS le entra un examen activo (examen extra en la misma orden).
+ALTER TABLE pacientes_cola
+    ADD COLUMN IF NOT EXISTS cerrado BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE pacientes_cola
+    ADD COLUMN IF NOT EXISTS orden_servicio VARCHAR(30);
+
+-- Se retira el UNIQUE(fecha, cédula) que bloqueaba el segundo ingreso. Se sustituye por
+-- dos índices parciales:
+--   uq_cola_os          → UN ingreso por OS (permite varias OS abiertas a la vez).
+--   uq_cola_shell_abierto → a lo sumo UN registro de recepción sin OS y abierto por
+--                           cédula (evita duplicar el registro antes de que Biofile le
+--                           asigne su OS). Al vincularse (sellar OS) o cerrarse, recepción
+--                           puede volver a listar al paciente para otra visita.
+-- Se elimina el índice de la iteración previa (un solo abierto por cédula), ya superado.
+ALTER TABLE pacientes_cola
+    DROP CONSTRAINT IF EXISTS pacientes_cola_fecha_numero_identificacion_key;
+DROP INDEX IF EXISTS uq_cola_ingreso_abierto;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cola_os
+    ON pacientes_cola(fecha, numero_identificacion, orden_servicio)
+    WHERE orden_servicio IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cola_shell_abierto
+    ON pacientes_cola(fecha, numero_identificacion)
+    WHERE orden_servicio IS NULL AND NOT cerrado;
+
+-- Las asignaciones se re-llavean al INGRESO concreto (paciente_cola_id) en lugar de
+-- (fecha, cédula, columna_header): dos ingresos del mismo día dejan de colisionar y
+-- cada examen pertenece a su atención. Defensa para instalaciones previas: se rellena
+-- cualquier paciente_cola_id nulo enlazando por (fecha, cédula) antes de exigir NOT
+-- NULL, para no bloquear el arranque.
+UPDATE asignaciones_profesionales ap
+   SET paciente_cola_id = pc.id
+  FROM pacientes_cola pc
+ WHERE ap.paciente_cola_id IS NULL
+   AND pc.fecha = ap.fecha AND pc.numero_identificacion = ap.numero_identificacion;
+ALTER TABLE asignaciones_profesionales
+    ALTER COLUMN paciente_cola_id SET NOT NULL;
+ALTER TABLE asignaciones_profesionales
+    DROP CONSTRAINT IF EXISTS asignaciones_profesionales_fecha_numero_identificacion_colu_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_asig_ingreso_columna
+    ON asignaciones_profesionales(paciente_cola_id, columna_header);

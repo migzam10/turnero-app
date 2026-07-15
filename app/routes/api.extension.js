@@ -60,41 +60,91 @@ router.post('/sync', async (req, res) => {
     const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, reconciliados: 0, errores: 0 };
 
     for (const p of pacientes) {
-        const { numeroIdentificacion, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
+        const { numeroIdentificacion, ordenServicio, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
         if (!numeroIdentificacion || !nombreProfesional || !columnaHeader) {
             resultados.errores++;
             continue;
         }
         const fechaParam = fechaValida(fecha) ? fecha : null;
+        const osParam = (ordenServicio != null && String(ordenServicio).trim() !== '')
+            ? String(ordenServicio).trim() : null;
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
-            const { rows: colaRows } = await client.query(
-                `SELECT id FROM pacientes_cola
-                 WHERE fecha = COALESCE($1::date, CURRENT_DATE) AND numero_identificacion = $2`,
-                [fechaParam, numeroIdentificacion]
-            );
-            let pacienteColaId = colaRows[0]?.id || null;
+            // Resuelve el INGRESO (llaveado por OS). Cada OS de Biofile es una orden
+            // independiente; la resolución decide entre reabrir la misma OS, sellar el
+            // registro de recepción, o crear un ingreso nuevo.
+            let pacienteColaId = null;
+            let ingresoCerrado = false;
+
+            if (osParam) {
+                // (1) ¿Ya existe el ingreso de ESA OS? → usarlo (misma orden → posible reapertura).
+                const { rows: osRows } = await client.query(
+                    `SELECT id, cerrado FROM pacientes_cola
+                     WHERE fecha = COALESCE($1::date, CURRENT_DATE)
+                       AND numero_identificacion = $2 AND orden_servicio = $3`,
+                    [fechaParam, numeroIdentificacion, osParam]
+                );
+                if (osRows[0]) {
+                    pacienteColaId = osRows[0].id;
+                    ingresoCerrado = osRows[0].cerrado === true;
+                } else {
+                    // (2) ¿Hay un registro de recepción ABIERTO sin OS? → sellarlo con esta OS.
+                    // El `AND orden_servicio IS NULL` externo evita pisar un sellado concurrente.
+                    const { rows: shellRows } = await client.query(
+                        `UPDATE pacientes_cola SET orden_servicio = $3, updated_at = NOW()
+                         WHERE id = (
+                             SELECT id FROM pacientes_cola
+                             WHERE fecha = COALESCE($1::date, CURRENT_DATE)
+                               AND numero_identificacion = $2
+                               AND orden_servicio IS NULL AND NOT cerrado
+                             ORDER BY created_at ASC LIMIT 1)
+                           AND orden_servicio IS NULL
+                         RETURNING id`,
+                        [fechaParam, numeroIdentificacion, osParam]
+                    );
+                    if (shellRows[0]) pacienteColaId = shellRows[0].id;
+                }
+            } else {
+                // Sin OS (extensión previa / fila atípica): fallback al ingreso abierto más reciente.
+                const { rows: colaRows } = await client.query(
+                    `SELECT id, cerrado FROM pacientes_cola
+                     WHERE fecha = COALESCE($1::date, CURRENT_DATE) AND numero_identificacion = $2
+                     ORDER BY cerrado ASC, created_at DESC LIMIT 1`,
+                    [fechaParam, numeroIdentificacion]
+                );
+                if (colaRows[0]) {
+                    pacienteColaId = colaRows[0].id;
+                    ingresoCerrado = colaRows[0].cerrado === true;
+                }
+            }
 
             if (!pacienteColaId) {
+                // (3) Ingreso nuevo (con OS si la hay). OS nueva ⇒ ingreso separado aunque
+                // sea el mismo profesional. El ON CONFLICT cubre la carrera de dos syncs
+                // creando la misma OS a la vez (solo aplica cuando hay OS).
                 const { primerNombre, primerApellido } = dividirNombre(nombrePaciente);
+                const conflicto = osParam
+                    ? `ON CONFLICT (fecha, numero_identificacion, orden_servicio) WHERE orden_servicio IS NOT NULL
+                       DO UPDATE SET updated_at = NOW()`
+                    : '';
                 const { rows: nuevoCola } = await client.query(
                     `INSERT INTO pacientes_cola
-                        (fecha, numero_identificacion, tipo_identificacion,
+                        (fecha, numero_identificacion, tipo_identificacion, orden_servicio,
                          primer_nombre, primer_apellido, prioridad,
                          estado_admision, modulo_admision, hora_llegada, hora_admision)
-                     VALUES (COALESCE($1::date, CURRENT_DATE), $2, 'CC',
+                     VALUES (COALESCE($1::date, CURRENT_DATE), $2, 'CC', $6,
                              $3, $4, 'normal',
                              'admisionado', 'auto_biofile',
                              COALESCE($5::timestamptz, NOW()), COALESCE($5::timestamptz, NOW()))
-                     ON CONFLICT (fecha, numero_identificacion)
-                     DO UPDATE SET updated_at = NOW()
+                     ${conflicto}
                      RETURNING id`,
-                    [fechaParam, numeroIdentificacion, primerNombre, primerApellido, horaLlegadaBiofile || null]
+                    [fechaParam, numeroIdentificacion, primerNombre, primerApellido, horaLlegadaBiofile || null, osParam]
                 );
                 pacienteColaId = nuevoCola[0].id;
+                ingresoCerrado = false;
                 resultados.autocreados++;
             }
 
@@ -103,11 +153,15 @@ router.post('/sync', async (req, res) => {
                     (fecha, paciente_cola_id, numero_identificacion, nombre_paciente, nombre_profesional,
                      area, columna_header, hora_llegada_biofile, terminal_id, login_name_biofile)
                  VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                 ON CONFLICT (fecha, numero_identificacion, columna_header)
+                 ON CONFLICT (paciente_cola_id, columna_header)
                  DO UPDATE SET
-                     paciente_cola_id = COALESCE(asignaciones_profesionales.paciente_cola_id, EXCLUDED.paciente_cola_id),
                      nombre_paciente = COALESCE(EXCLUDED.nombre_paciente, asignaciones_profesionales.nombre_paciente),
                      hora_llegada_biofile = EXCLUDED.hora_llegada_biofile,
+                     -- El sello del login se refresca al del último escaneo. Antes quedaba
+                     -- congelado desde el INSERT: si la fila la creó otra PC/usuario de Biofile
+                     -- (multi-sesión) nunca coincidía con el login que reconciliaba y quedaba
+                     -- huérfana. Ahora la reconciliación ya no depende del login (scope por fecha).
+                     login_name_biofile = EXCLUDED.login_name_biofile,
                      -- Blindaje contra resurrección: si un humano la gestionó (manual_override)
                      -- la sincronización respeta su estado; si la dio de baja la reconciliación
                      -- (cancelado por LIS) y el paciente reaparece, se reactiva como pendiente.
@@ -117,11 +171,28 @@ router.post('/sync', async (req, res) => {
                                    THEN asignaciones_profesionales.estado
                                    WHEN asignaciones_profesionales.estado = 'cancelado' THEN 'pendiente'
                                    ELSE asignaciones_profesionales.estado END,
+                     -- Al reactivar una fila que la reconciliación había dado de baja, se
+                     -- limpia origen_baja (si no, queda 'lis' pegado en una fila ya activa).
+                     -- Con manual_override se respeta lo que puso la persona.
+                     origen_baja = CASE WHEN asignaciones_profesionales.manual_override
+                                        THEN asignaciones_profesionales.origen_baja ELSE NULL END,
                      updated_at = NOW()
-                 RETURNING (xmax = 0) AS es_nuevo`,
+                 RETURNING (xmax = 0) AS es_nuevo, estado`,
                 [fechaParam, pacienteColaId, numeroIdentificacion, nombrePaciente || null, nombreProfesional,
                  area, columnaHeader, horaLlegadaBiofile || null, terminalId || null, loginName]
             );
+
+            // Reapertura (#1): si el ingreso estaba cerrado y ahora entra un examen ACTIVO
+            // (pendiente/llamando/en_atencion) —típicamente un examen extra agregado a la
+            // orden ya cerrada—, se reabre la atención. Un re-sync de un examen ya finalizado
+            // conserva 'finalizado' y NO reabre, así que las órdenes cerradas no reviven solas.
+            if (ingresoCerrado && ['pendiente', 'llamando', 'en_atencion'].includes(rows[0]?.estado)) {
+                await client.query(
+                    `UPDATE pacientes_cola SET cerrado = false, updated_at = NOW() WHERE id = $1`,
+                    [pacienteColaId]
+                );
+                ingresoCerrado = false;
+            }
 
             // Regla de negocio: cuando hay cruce con Biofile, hora_admision del paciente
             // ES la hora del LIS (sobrescritura destructiva). Se toma el MIN de las horas
@@ -155,37 +226,49 @@ router.post('/sync', async (req, res) => {
 
     // ── State Reconciliation ──────────────────────────────────────────────────
     // Solo se reconcilia cuando el cliente garantiza que `pacientes` es el snapshot
-    // COMPLETO del LIS para ese login. Con snapshot parcial (o vacío) jamás se da de
-    // baja nada, para no borrar en masa por un fallo de scraping (modo seguro).
+    // COMPLETO del tablero de Biofile (global, todos los profesionales). Con snapshot
+    // parcial (o vacío) jamás se da de baja nada, para no borrar en masa por un fallo de
+    // scraping (modo seguro). El scope de la baja es por fecha (ver query más abajo).
     if (snapshotCompleto === true && pacientes.length > 0) {
         // Agrupa las claves entrantes por fecha efectiva (COALESCE(fecha, CURRENT_DATE)).
         // Las fechas ausentes/ inválidas comparten un grupo cuyo scope cae a CURRENT_DATE.
+        // La clave de reconciliación incluye la OS (misma que usa el dedup de la extensión):
+        // así el mismo profesional en dos OS distintas se reconcilia por separado y no se
+        // cancela/omite cruzado entre órdenes. Sin OS cae a la cédula (compat extensión vieja).
+        const claveDe = (os, columna, cedula) =>
+            `${(os != null && String(os).trim() !== '') ? String(os).trim() : cedula}|${columna}`;
         const grupos = new Map(); // key -> { fechaParam, claves:Set }
         for (const p of pacientes) {
             if (!p.numeroIdentificacion || !p.nombreProfesional || !p.columnaHeader) continue;
             const fechaParam = fechaValida(p.fecha) ? p.fecha : null;
             const key = fechaParam === null ? '__hoy__' : fechaParam;
             if (!grupos.has(key)) grupos.set(key, { fechaParam, claves: new Set() });
-            grupos.get(key).claves.add(`${p.numeroIdentificacion}|${p.columnaHeader}`);
+            grupos.get(key).claves.add(claveDe(p.ordenServicio, p.columnaHeader, p.numeroIdentificacion));
         }
 
         for (const { fechaParam, claves } of grupos.values()) {
             const rc = await pool.connect();
             try {
                 await rc.query('BEGIN');
-                // Bloquea el scope (fecha, login) para evitar carreras con upserts concurrentes.
+                // Scope SOLO por fecha (ya NO por login_name_biofile). PacientesSeguimiento es
+                // un tablero global: un snapshot completo de cualquier sesión de Biofile ve a
+                // TODOS los profesionales, así que es autoritativo para toda la fecha. Filtrar
+                // por login fragmentaba la limpieza cuando la extensión corría en 2 PC con
+                // usuarios distintos: la fila creada por un usuario nunca la reconciliaba el
+                // otro y quedaba pegada. FOR UPDATE bloquea el scope contra carreras.
                 const { rows: existentes } = await rc.query(
-                    `SELECT id, numero_identificacion, columna_header, estado, manual_override
-                     FROM asignaciones_profesionales
-                     WHERE fecha = COALESCE($1::date, CURRENT_DATE)
-                       AND login_name_biofile = $2
-                       AND activo = true
-                       AND origen = 'biofile'
-                     FOR UPDATE`,
-                    [fechaParam, loginName]
+                    `SELECT ap.id, ap.numero_identificacion, ap.columna_header, ap.estado,
+                            ap.manual_override, pc.orden_servicio
+                     FROM asignaciones_profesionales ap
+                     JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
+                     WHERE ap.fecha = COALESCE($1::date, CURRENT_DATE)
+                       AND ap.activo = true
+                       AND ap.origen = 'biofile'
+                     FOR UPDATE OF ap`,
+                    [fechaParam]
                 );
                 for (const row of existentes) {
-                    const clave = `${row.numero_identificacion}|${row.columna_header}`;
+                    const clave = claveDe(row.orden_servicio, row.columna_header, row.numero_identificacion);
                     if (claves.has(clave)) continue;                       // sigue en el LIS
                     if (['llamando', 'en_atencion', 'finalizado'].includes(row.estado)) continue; // en curso
                     if (row.manual_override) continue;                     // gestionado por un humano
