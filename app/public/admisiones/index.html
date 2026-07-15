@@ -416,6 +416,7 @@ function renderCola() {
         } else if (admisionando) {
             botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                <button class="btn-sm btn-admisionar" onclick="finalizarPaciente('${p.id}')">Finalizar</button>
+               <button class="btn-sm btn-devolver" onclick="devolverPaciente('${p.id}')">Cancelar</button>
                ${btnAsignar}`;
         } else if (llamando) {
             botones = `<button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
@@ -462,6 +463,10 @@ function renderCola() {
                             <div class="pac-nombre">${esc(p.nombre_completo)}<span class="badge-otro">${esc(p.modulo_admision || '—')}</span></div>
                             <div class="pac-sub">${sub}</div>
                         </div>
+                    </div>
+                    <div class="pac-btns">
+                        <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
+                        <button class="btn-sm btn-asignar" onclick="abrirAsignar('${p.id}')">Asignar a profesional</button>
                     </div>
                 </div>`;
             }).join('');
@@ -552,13 +557,23 @@ async function finalizarPaciente(id) {
 }
 
 async function devolverPaciente(id) {
+    // Desde 'admisionando'/'admisionado' la cancelación es destructiva (se pierde la
+    // admisión y se cancelan las asignaciones a profesionales) → confirmar. Desde
+    // 'llamando_admision' es solo cancelar el llamado, sin confirmación.
+    const p = colaActual.find(x => x.id === id);
+    if (p && (p.estado_admision === 'admisionando' || p.estado_admision === 'admisionado')) {
+        const msg = `¿Cancelar la admisión de ${p.nombre_completo}?\n\n`
+            + `Volverá a "En espera" con su hora de llegada intacta y se cancelarán sus asignaciones a profesionales.`;
+        if (!confirm(msg)) return;
+    }
     try {
         const resp = await fetch(`/api/admisiones/devolver/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID }
         });
         if (resp.ok) { cerrarModal(); cargarCola(); }
-    } catch {}
+        else showToast('No se pudo cancelar (estado inválido). Refrescá e intentá de nuevo.', 'error');
+    } catch { showToast('Error de conexión con el servidor', 'error'); }
 }
 
 // ── Modal ───────────────────────────────────────────────────────

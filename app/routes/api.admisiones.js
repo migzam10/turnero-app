@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { query } = require('../database/db');
+const { query, pool } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
@@ -151,40 +151,80 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
 });
 
 // POST /api/admisiones/devolver/:id
+// Cancela la admisión y devuelve al paciente a 'esperando' CONSERVANDO su hora de
+// llegada (recepción). Funciona desde cualquiera de los tres estados de admisión:
+//   - llamando_admision  → cancela el llamado (caso original)
+//   - admisionando       → deshace el "Admisionar" (paso 1)
+//   - admisionado        → deshace la admisión ya cerrada (antes NO había vuelta atrás)
+// Limpia hora_llamado_admision, modulo_admision, hora_admision y reabre el ingreso
+// (cerrado=false). Si ya tenía profesionales asignados (cruce de Biofile), esas
+// asignaciones activas se dan de baja manual (manual_override=true, así la
+// reconciliación del LIS no las revive). Todo en una transacción.
 router.post('/devolver/:id', validarTerminalId, async (req, res) => {
+    const client = await pool.connect();
     try {
+        await client.query('BEGIN');
+
+        // Baja de las asignaciones activas del ingreso (si las hubiera). En
+        // 'llamando_admision' normalmente no hay ninguna → 0 filas, inofensivo.
+        const asig = await client.query(
+            `UPDATE asignaciones_profesionales
+             SET activo = false, estado = 'cancelado', manual_override = true,
+                 origen_baja = 'manual', updated_at = NOW()
+             WHERE paciente_cola_id = $1 AND activo = true
+               AND estado IN ('pendiente','llamando','en_atencion')
+             RETURNING nombre_profesional`,
+            [req.params.id]
+        );
+
         // Se conserva el módulo anterior (modulo_anterior) porque el UPDATE lo pone
         // en NULL; el Display lo necesita para quitar al paciente de la pantalla.
-        const { rows, rowCount } = await query(
+        const { rows, rowCount } = await client.query(
             `UPDATE pacientes_cola pc
              SET estado_admision = 'esperando',
                  hora_llamado_admision = NULL,
                  modulo_admision = NULL,
+                 hora_admision = NULL,
+                 cerrado = false,
                  updated_at = NOW()
              FROM (SELECT id, modulo_admision FROM pacientes_cola WHERE id = $1) old
              WHERE pc.id = old.id AND pc.fecha = CURRENT_DATE
-               AND pc.estado_admision = 'llamando_admision'
+               AND pc.estado_admision IN ('llamando_admision','admisionando','admisionado')
              RETURNING pc.*, old.modulo_admision AS modulo_anterior`,
             [req.params.id]
         );
-        if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+        if (rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'estado_invalido' });
+        }
+
+        await client.query('COMMIT');
 
         const io = req.app.get('io');
         io.to('admisiones').emit('admision:devuelto', rows[0]);
         io.to('display').emit('admision:devuelto', rows[0]);
+        // Avisar a cada profesional que perdió la asignación para que refresque su cola.
+        const profesionales = [...new Set(asig.rows.map(a => a.nombre_profesional).filter(Boolean))];
+        for (const prof of profesionales) {
+            io.to(`profesional:${prof}`).emit('asignacion:cancelado_manual', { paciente_cola_id: rows[0].id });
+        }
         emitUpdatePatients(io);
 
         registrarEvento({
             tipo: 'admision_devuelta',
-            descripcion: `${nombrePac(rows[0])} devuelto a espera (${rows[0].modulo_anterior})`,
+            descripcion: `${nombrePac(rows[0])} devuelto a espera (${rows[0].modulo_anterior})`
+                + (profesionales.length ? ` — canceladas ${profesionales.length} asignación(es)` : ''),
             pacienteId: rows[0].id, terminalId: req.terminalId,
-            datos: { modulo: rows[0].modulo_anterior }
+            datos: { modulo: rows[0].modulo_anterior, asignaciones_canceladas: profesionales }
         });
 
         return res.json(rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('[admisiones/devolver]', err);
         return res.status(500).json({ error: 'db_error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -219,7 +259,7 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
                  manual_override, origen, login_name_biofile, consultorio_profesional)
              VALUES ($1, $2, $3, $4, $5, $5, COALESCE(NULLIF(TRIM($6),''),'PARTICULAR'),
                      'pendiente', true, true, 'manual', NULL, NULL)
-             ON CONFLICT (fecha, numero_identificacion, columna_header)
+             ON CONFLICT (paciente_cola_id, columna_header)
              DO UPDATE SET
                  activo = true, estado = 'pendiente', manual_override = true,
                  origen = 'manual', origen_baja = NULL,
@@ -233,6 +273,11 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
         // RETURNING vacío = ya existía una fila ACTIVA con ese profesional (el WHERE
         // del DO UPDATE bloqueó la reactivación): no se duplica ni se pisa.
         if (rowCount === 0) return res.status(409).json({ error: 'ya_asignado' });
+
+        // Reabre el ingreso si estaba cerrado: agregar un profesional a una atención ya
+        // finalizada la vuelve a poner en curso (examen extra gestionado en admisiones).
+        await query(`UPDATE pacientes_cola SET cerrado = false, updated_at = NOW()
+                     WHERE id = $1 AND cerrado = true`, [pc.id]);
 
         const io = req.app.get('io');
         io.to(`profesional:${profesional}`).emit('asignacion:manual', rows[0]);
