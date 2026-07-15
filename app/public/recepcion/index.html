@@ -332,10 +332,13 @@ function esc(v) {
 const scanInput = document.getElementById('scan-input');
 let scanTimer = null;
 
-// ¿El foco está dentro de un campo del formulario? (entonces NO robamos el foco)
+// ¿El foco está dentro de un campo donde el usuario está escribiendo? (entonces NO
+// robamos el foco). Incluye el formulario de registro (.scan-preview) y el buscador de
+// la cola (#cola-buscar), que vive en otro panel y antes se quedaba sin poder escribir.
 function focoEnFormulario() {
     const a = document.activeElement;
-    return a && a.closest && a.closest('.scan-preview');
+    if (!a) return false;
+    return (a.closest && a.closest('.scan-preview')) || a.id === 'cola-buscar';
 }
 
 // Mantener el foco en el input oculto mientras el usuario no esté escribiendo en un campo,
@@ -344,7 +347,8 @@ function mantenerFocoScanner() {
     if (!focoEnFormulario()) scanInput.focus();
 }
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('.panel-scan .scan-preview') && !e.target.closest('.modal')) {
+    if (!e.target.closest('.panel-scan .scan-preview') && !e.target.closest('.modal')
+        && e.target.id !== 'cola-buscar') {
         mantenerFocoScanner();
     }
 });
@@ -630,7 +634,7 @@ async function registrarPaciente() {
                 mostrarMsg(`Paciente registrado correctamente — ${nombre1} ${apellido1}`, 'ok');
                 setTimeout(resetearFormulario, 2200);
             } else if (resp.status === 409) {
-                mostrarMsg(`El paciente con cédula ${cedula} ya fue registrado hoy`, 'warn');
+                mostrarMsg(`El paciente con cédula ${cedula} ya tiene un registro en curso hoy (sin admisionar aún)`, 'warn');
             } else {
                 mostrarMsg(`Error: ${data.error || 'Error desconocido'}`, 'error');
             }

@@ -730,12 +730,13 @@
             document.getElementById('progreso-bar').style.width = '0';
         }
 
+        // La pantalla muestra SOLO al paciente que se está llamando en el momento. La lista
+        // de "siguientes" se retiró a propósito: con varios profesionales llamando a la vez
+        // se acumulaban muchos nombres y generaba contaminación visual. La cola de anuncios
+        // (estado.colaCalls) sigue funcionando igual —orden, timbre, voz—, solo no se pinta.
         function renderColaSiguiente() {
             const el = document.getElementById('cola-siguiente');
-            if (!estado.colaCalls.length) { el.innerHTML = ''; return; }
-            el.innerHTML = estado.colaCalls.map(c =>
-                `<div class="sig-item">${escHtml(c.nombre_paciente)}</div>`
-            ).join('');
+            if (el) el.innerHTML = '';
         }
 
         // Cancela la visualización de una asignación (timer + cola). Coincide por id de
