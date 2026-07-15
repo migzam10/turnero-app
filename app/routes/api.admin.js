@@ -230,7 +230,8 @@ router.get('/resumen-dia', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (hora_llamado_admision - hora_llegada))/60)
                       FILTER (WHERE hora_llamado_admision IS NOT NULL))        AS avg_min_espera_admision,
                 ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llamado_admision))/60)
-                      FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL)) AS avg_min_registro
+                      FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL
+                              AND hora_admision >= hora_llamado_admision)) AS avg_min_registro
              FROM pacientes_cola WHERE fecha = $1`,
             [fecha]
         );
@@ -273,7 +274,8 @@ router.get('/dashboard', async (req, res) => {
                     ROUND(AVG(EXTRACT(EPOCH FROM (hora_llamado_admision - hora_llegada))/60)
                           FILTER (WHERE hora_llamado_admision IS NOT NULL))        AS avg_min_espera_admision,
                     ROUND(AVG(EXTRACT(EPOCH FROM (hora_admision - hora_llamado_admision))/60)
-                          FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL)) AS avg_min_registro
+                          FILTER (WHERE hora_admision IS NOT NULL AND hora_llamado_admision IS NOT NULL
+                                  AND hora_admision >= hora_llamado_admision)) AS avg_min_registro
                  FROM pacientes_cola WHERE fecha = $1`,
                 [fecha]
             ),
@@ -494,8 +496,9 @@ router.get('/reporte-detallado', async (req, res) => {
                 MAX(ap.hora_finalizado) FILTER (WHERE ap.activo)              AS t5_ultima_finalizacion,
                 ROUND(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
                                                                               AS min_espera_admision,
-                ROUND(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
-                                                                              AS min_registro,
+                CASE WHEN pc.hora_admision >= pc.hora_llamado_admision
+                     THEN ROUND(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
+                END                                                           AS min_registro,
                 ROUND(EXTRACT(EPOCH FROM (MIN(ap.hora_llamado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
                                                                               AS min_espera_primera_atencion,
                 ROUND(EXTRACT(EPOCH FROM (MAX(ap.hora_finalizado) FILTER (WHERE ap.activo) - pc.hora_llegada))/60)
@@ -550,8 +553,7 @@ router.get('/reporte-detallado', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_llamado - pc.hora_llegada))/60)
                       FILTER (WHERE ap.hora_llamado IS NOT NULL))                 AS avg_min_espera_hasta_llamado
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc
-                ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.fecha BETWEEN $1 AND $2
              GROUP BY ap.nombre_profesional, ap.area
              ORDER BY ap.nombre_profesional`,
@@ -565,7 +567,8 @@ router.get('/reporte-detallado', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
                       FILTER (WHERE pc.hora_llamado_admision IS NOT NULL))          AS avg_espera_admision,
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
-                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL)) AS avg_registro,
+                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL
+                              AND pc.hora_admision >= pc.hora_llamado_admision)) AS avg_registro,
                 ROUND(AVG(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
                       FILTER (WHERE ap.estado='finalizado' AND ap.activo))         AS avg_tiempo_atencion_general,
                 COUNT(*) FILTER (WHERE ap.origen = 'manual' AND ap.activo)         AS particulares,
@@ -602,7 +605,7 @@ router.get('/reporte-detallado', async (req, res) => {
                     THEN ROUND(EXTRACT(EPOCH FROM (ap.hora_finalizado - ap.hora_en_atencion))/60)
                 END AS min_atencion
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.fecha BETWEEN $1 AND $2
              ORDER BY ap.fecha, ap.nombre_profesional, ap.hora_llegada_biofile NULLS LAST, ap.created_at`,
             [desde, hasta]
@@ -634,10 +637,10 @@ router.get('/reporte-rango', async (req, res) => {
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_llamado_admision - pc.hora_llegada))/60)
                       FILTER (WHERE pc.hora_llamado_admision IS NOT NULL))          AS avg_espera_admision,
                 ROUND(AVG(EXTRACT(EPOCH FROM (pc.hora_admision - pc.hora_llamado_admision))/60)
-                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL)) AS avg_registro
+                      FILTER (WHERE pc.hora_admision IS NOT NULL AND pc.hora_llamado_admision IS NOT NULL
+                              AND pc.hora_admision >= pc.hora_llamado_admision)) AS avg_registro
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc
-                ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.fecha BETWEEN $1 AND $2
              GROUP BY ap.fecha, ap.nombre_profesional, ap.area
              ORDER BY ap.fecha DESC, ap.nombre_profesional`,
