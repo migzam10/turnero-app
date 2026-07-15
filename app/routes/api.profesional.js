@@ -49,16 +49,17 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
                       AND otro.nombre_profesional <> $1
                       AND otro.estado IN ('llamando','en_atencion')
                 ) AS bloqueado,
-                (SELECT otro.area FROM asignaciones_profesionales otro
+                (SELECT COALESCE(otro.consultorio_profesional, otro.nombre_profesional)
+                 FROM asignaciones_profesionales otro
                  WHERE otro.numero_identificacion = ap.numero_identificacion
                    AND otro.fecha = COALESCE($2::date, CURRENT_DATE)
                    AND otro.nombre_profesional <> $1
                    AND otro.estado IN ('llamando','en_atencion')
+                 ORDER BY otro.consultorio_profesional IS NULL,
+                          CASE otro.estado WHEN 'en_atencion' THEN 1 ELSE 2 END
                  LIMIT 1) AS bloqueado_por
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc
-                ON pc.numero_identificacion = ap.numero_identificacion
-               AND pc.fecha = COALESCE($2::date, CURRENT_DATE)
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.fecha = COALESCE($2::date, CURRENT_DATE)
                AND ap.nombre_profesional = $1
                AND ap.activo = true
@@ -247,7 +248,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
                     pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
                     ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.id = $1`,
             [req.params.id]
         );
@@ -293,7 +294,7 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
                     pc.primer_apellido || COALESCE(' ' || pc.segundo_apellido,''),
                     ap.nombre_paciente, ap.numero_identificacion) AS nombre_paciente
              FROM asignaciones_profesionales ap
-             LEFT JOIN pacientes_cola pc ON pc.numero_identificacion = ap.numero_identificacion AND pc.fecha = ap.fecha
+             LEFT JOIN pacientes_cola pc ON pc.id = ap.paciente_cola_id
              WHERE ap.id = $1`,
             [req.params.id]
         );
@@ -363,6 +364,19 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
             [req.params.id]
         );
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
+
+        // Cierra el INGRESO si ya no quedan exámenes activos por atender y la admisión
+        // está hecha: esta última finalización es su "fecha de terminación". Si más tarde
+        // llega un examen extra (sync o admisiones) el ingreso se reabre y la fecha avanza.
+        await query(
+            `UPDATE pacientes_cola pc SET cerrado = true, updated_at = NOW()
+             WHERE pc.id = $1 AND pc.estado_admision = 'admisionado'
+               AND NOT EXISTS (
+                   SELECT 1 FROM asignaciones_profesionales a
+                   WHERE a.paciente_cola_id = pc.id AND a.activo = true
+                     AND a.estado IN ('pendiente','llamando','en_atencion'))`,
+            [rows[0].paciente_cola_id]
+        );
 
         const io = req.app.get('io');
         if (profesional) io.to(`profesional:${profesional}`).emit('asignacion:finalizado', rows[0]);
