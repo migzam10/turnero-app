@@ -3,6 +3,7 @@ const { query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
+const { normalizarIdentificacion } = require('../utils/identificacion');
 
 const router = Router();
 
@@ -67,6 +68,10 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
     // Normalizar sexo: solo se acepta 'M' o 'F'; cualquier otro valor se guarda como NULL.
     const sexoNorm = ['M', 'F'].includes((sexo || '').toUpperCase()) ? sexo.toUpperCase() : null;
 
+    // El lector rellena con ceros a la izquierda hasta 10 dígitos y Biofile no los usa:
+    // se guarda la forma canónica para que el cruce del sync encuentre al paciente.
+    const cedula = normalizarIdentificacion(numero_identificacion);
+
     try {
         // Validar UUID del terminal antes de insertar
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -91,7 +96,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
                      END,
                      $9,$10,$11)
              RETURNING *`,
-            [numero_identificacion, tipo_identificacion,
+            [cedula, tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
@@ -120,7 +125,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
                 `SELECT * FROM pacientes_cola
                  WHERE fecha = CURRENT_DATE AND numero_identificacion = $1
                    AND orden_servicio IS NULL AND NOT cerrado`,
-                [numero_identificacion]
+                [cedula]
             );
             return res.status(409).json({ error: 'ya_registrado', paciente: existente[0] });
         }
@@ -168,7 +173,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
                 updated_at            = NOW()
              WHERE id = $10 AND fecha = CURRENT_DATE AND estado_admision = 'esperando'
              RETURNING *`,
-            [numero_identificacion, tipo_identificacion,
+            [normalizarIdentificacion(numero_identificacion), tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,

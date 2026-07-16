@@ -3,6 +3,7 @@ const { pool, query } = require('../database/db');
 const { validarExtensionSecret } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
+const { normalizarIdentificacion } = require('../utils/identificacion');
 
 const router = Router();
 
@@ -60,11 +61,14 @@ router.post('/sync', async (req, res) => {
     const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, reconciliados: 0, errores: 0 };
 
     for (const p of pacientes) {
-        const { numeroIdentificacion, ordenServicio, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
-        if (!numeroIdentificacion || !nombreProfesional || !columnaHeader) {
+        const { numeroIdentificacion: cedulaCruda, ordenServicio, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
+        if (!cedulaCruda || !nombreProfesional || !columnaHeader) {
             resultados.errores++;
             continue;
         }
+        // Canoniza la cédula (sin ceros a la izquierda) para que empate con lo que guarda
+        // recepción: su lector rellena con ceros hasta 10 dígitos y Biofile no los usa.
+        const numeroIdentificacion = normalizarIdentificacion(cedulaCruda);
         const fechaParam = fechaValida(fecha) ? fecha : null;
         const osParam = (ordenServicio != null && String(ordenServicio).trim() !== '')
             ? String(ordenServicio).trim() : null;
@@ -243,7 +247,10 @@ router.post('/sync', async (req, res) => {
             const fechaParam = fechaValida(p.fecha) ? p.fecha : null;
             const key = fechaParam === null ? '__hoy__' : fechaParam;
             if (!grupos.has(key)) grupos.set(key, { fechaParam, claves: new Set() });
-            grupos.get(key).claves.add(claveDe(p.ordenServicio, p.columnaHeader, p.numeroIdentificacion));
+            // Misma canonización que en el upsert: si no hay OS la clave cae a la cédula,
+            // y debe ser la forma sin ceros para empatar con lo guardado.
+            grupos.get(key).claves.add(
+                claveDe(p.ordenServicio, p.columnaHeader, normalizarIdentificacion(p.numeroIdentificacion)));
         }
 
         for (const { fechaParam, claves } of grupos.values()) {
