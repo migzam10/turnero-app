@@ -130,7 +130,7 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <p>Configure sus datos de acceso. El nombre debe coincidir exactamente con Biofile.</p>
         <div class="campo-grupo">
             <label class="campo-label">Nombre en Biofile *</label>
-            <input class="campo-input" id="input-profesional" placeholder="Ej: KENDY ZABALETA" autocomplete="off" oninput="buscarProfesional(this.value)" onblur="setTimeout(()=>document.getElementById('sugerencias').classList.remove('visible'),200)">
+            <input class="campo-input" id="input-profesional" placeholder="Ej: ANA GOMEZ" autocomplete="off" oninput="buscarProfesional(this.value)" onblur="setTimeout(()=>{document.getElementById('sugerencias').classList.remove('visible');prepararClave();},200)">
             <ul class="sugerencias" id="sugerencias"></ul>
         </div>
         <div class="campo-grupo">
@@ -141,6 +141,13 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
             <div id="aviso-sin-consultorios" style="display:none;font-size:.78rem;color:#d97706;margin-top:4px">
                 No hay consultorios configurados. Pida al administrador crearlos en el panel Admin.
             </div>
+        </div>
+        <!-- Solo aparece si este profesional tiene clave encendida (lo decide el servidor). -->
+        <div class="campo-grupo" id="grupo-clave" style="display:none">
+            <label class="campo-label">Clave *</label>
+            <input class="campo-input" id="input-clave" type="password" autocomplete="off"
+                   placeholder="Su clave" onkeydown="if(event.key==='Enter')confirmarSetup()">
+            <div id="error-clave" style="display:none;font-size:.78rem;color:#dc2626;margin-top:4px"></div>
         </div>
         <button class="btn-setup" id="btn-setup-entrar" onclick="confirmarSetup()">Entrar al módulo</button>
     </div>
@@ -207,6 +214,10 @@ const TERMINAL_ID = (() => {
     return id;
 })();
 
+// Token del mini-login. Solo existe si este profesional tiene la clave encendida; si no
+// la usa, va vacío y el servidor no lo exige. Vive en localStorage para que un F5 (o la TV
+// que se reinicia) no obligue a volver a teclear la clave en mitad de la jornada.
+let tokenProfesional = localStorage.getItem('profesional_token') || '';
 let profesionalActual = localStorage.getItem('profesional_nombre') || '';
 let consultorioActual = localStorage.getItem('profesional_consultorio') || '';
 // ¿El consultorio actual es multipaciente? Se persiste junto al nombre para no depender
@@ -369,6 +380,26 @@ function validarConsultorioActual() {
     }
 }
 
+// Cabeceras de toda petición del módulo. El token va solo si este profesional usa clave;
+// cuando no la usa el header no viaja y el servidor no lo pide. Un único lugar para que
+// no quede una llamada suelta sin credencial cuando se agregue la próxima.
+function cabecerasProf(extra = {}) {
+    const h = { 'X-Terminal-Id': TERMINAL_ID, ...extra };
+    if (tokenProfesional) h['Authorization'] = `Bearer ${tokenProfesional}`;
+    return h;
+}
+
+// El token venció (12 h) o el admin le encendió la clave a alguien que ya estaba dentro:
+// se descarta y se vuelve a pedir. Sin esto, la pantalla se quedaría en blanco sin decir
+// por qué, que es exactamente el fallo mudo que veníamos de arreglar.
+function sesionCaducada() {
+    tokenProfesional = '';
+    localStorage.removeItem('profesional_token');
+    document.getElementById('overlay-setup').style.display = '';
+    document.getElementById('input-profesional').value = profesionalActual;
+    prepararClave();
+}
+
 // Escapa texto dinámico para inyección segura en innerHTML (nombres del catálogo).
 function esc(v) {
     return String(v ?? '')
@@ -376,13 +407,66 @@ function esc(v) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function confirmarSetup() {
-    const nombre = document.getElementById('input-profesional').value.trim().toUpperCase();
+// ¿Este profesional usa clave? Lo decide el servidor. Se consulta al salir del campo del
+// nombre para que el campo de clave ya esté ahí cuando el usuario llegue abajo.
+async function prepararClave() {
+    const nombre = document.getElementById('input-profesional').value.trim();
+    const grupo = document.getElementById('grupo-clave');
+    const err = document.getElementById('error-clave');
+    err.style.display = 'none';
+    if (!nombre) { grupo.style.display = 'none'; return false; }
+    try {
+        const resp = await fetch(`/api/profesional/requiere-password?profesional=${encodeURIComponent(nombre)}`);
+        const { requiere } = await resp.json();
+        grupo.style.display = requiere ? '' : 'none';
+        return !!requiere;
+    } catch {
+        // Sin red no se puede saber: se oculta el campo y el servidor decide igual al entrar.
+        grupo.style.display = 'none';
+        return false;
+    }
+}
+
+function mostrarErrorClave(msg) {
+    const err = document.getElementById('error-clave');
+    err.textContent = msg;
+    err.style.display = '';
+}
+
+async function confirmarSetup() {
+    // El nombre NO se canoniza aquí: lo hace el servidor. La pantalla no debe tener su
+    // propia media-normalización (un .toUpperCase() no pliega tildes y partía la identidad).
+    const nombre = document.getElementById('input-profesional').value.trim();
     const sel = document.getElementById('select-consultorio');
     const consultorio = sel.value.trim();
     if (!nombre) { alert('Ingrese su nombre como aparece en Biofile'); return; }
     if (!consultorio) { alert('Seleccione un consultorio'); return; }
     const multi = sel.selectedOptions[0] && sel.selectedOptions[0].dataset.multi === 'true';
+
+    // Mini-login: solo para quien tenga la clave encendida.
+    if (await prepararClave()) {
+        const clave = document.getElementById('input-clave').value;
+        if (!clave) { mostrarErrorClave('Ingrese su clave'); return; }
+        try {
+            const resp = await fetch('/api/profesional/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+                body: JSON.stringify({ profesional: nombre, password: clave })
+            });
+            if (resp.status === 429) { mostrarErrorClave('Demasiados intentos. Espere unos minutos.'); return; }
+            if (!resp.ok) { mostrarErrorClave('Clave incorrecta'); document.getElementById('input-clave').value = ''; return; }
+            const { token } = await resp.json();
+            tokenProfesional = token;
+            localStorage.setItem('profesional_token', token);
+            document.getElementById('input-clave').value = '';
+        } catch {
+            mostrarErrorClave('No se pudo conectar con el servidor');
+            return;
+        }
+    } else {
+        tokenProfesional = '';
+        localStorage.removeItem('profesional_token');
+    }
 
     profesionalActual = nombre;
     consultorioActual = consultorio;
@@ -445,8 +529,12 @@ async function cargarAsignaciones() {
     const qsFecha = fechaSel ? `&fecha=${encodeURIComponent(fechaSel)}` : '';
     try {
         const resp = await fetch(`/api/profesional/asignaciones?profesional=${encodeURIComponent(profesionalActual)}${qsFecha}`, {
-            headers: { 'X-Terminal-Id': TERMINAL_ID }
+            headers: cabecerasProf()
         });
+        // 401 = venció el token o le encendieron la clave a alguien que ya estaba dentro;
+        // 403 = el token guardado es de otro profesional. En ambos casos se vuelve a pedir
+        // en vez de dejar la pantalla en blanco sin explicación.
+        if (resp.status === 401 || resp.status === 403) { sesionCaducada(); return; }
         asignaciones = await resp.json();
 
         if (!esHistorial) {
@@ -638,7 +726,7 @@ async function accion(tipo, id) {
     try {
         const resp = await fetch(`/api/profesional/${tipo}/${id}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            headers: cabecerasProf({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ profesional: profesionalActual, consultorio: consultorioActual })
         });
         if (!resp.ok) {
@@ -677,7 +765,7 @@ async function cancelarLlamado(id) {
     try {
         await fetch(`/api/profesional/cancelar-llamado/${id}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            headers: cabecerasProf({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ profesional: profesionalActual })
         });
     } catch {}
@@ -738,7 +826,7 @@ async function cancelarAsignacion(id) {
     try {
         const resp = await fetch(`/api/profesional/cancelar-asignacion/${id}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            headers: cabecerasProf({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ profesional: profesionalActual })
         });
         if (!resp.ok) {
@@ -826,7 +914,7 @@ async function reasignar(id, nuevoProfesional) {
     try {
         const resp = await fetch(`/api/profesional/reasignar/${id}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Terminal-Id': TERMINAL_ID },
+            headers: cabecerasProf({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ profesional: profesionalActual, nuevo_profesional: nuevoProfesional.toUpperCase() })
         });
         if (!resp.ok) {

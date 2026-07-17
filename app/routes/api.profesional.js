@@ -3,8 +3,89 @@ const { pool, query } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
+const { canonizar } = require('../utils/nombreProfesional');
+const { resolverProfesionalId } = require('../services/profesionales');
+const { verificar } = require('../utils/password');
+const { crearTokenProfesional, exigirPasswordSiAplica, requierePassword,
+        loginProfBloqueado, registrarFalloProf, limpiarFallosProf } = require('../middleware/profesionalAuth');
 
 const router = Router();
+
+// El nombre del profesional llega del navegador y se compara contra nombre_profesional /
+// columna_header, que están canonizados. Canonizarlo aquí, en un único punto de entrada,
+// y no confiar en lo que manda el cliente:
+//   - la pantalla es un input libre: quien teclea "María José Peña" mandaría
+//     'MARÍA JOSÉ PEÑA' (toUpperCase no pliega tildes) y no empataría con 'MARIA JOSE PEÑA';
+//   - el localStorage de cada profesional guarda la forma con la que entró la última vez,
+//     anterior a la canonización.
+// En los dos casos el fallo es mudo: la consulta no falla, devuelve cero filas y el
+// profesional ve la pantalla vacía sin ningún error. Arreglarlo en el servidor cubre
+// además las sesiones ya guardadas, sin depender de que cada navegador se actualice.
+router.use((req, res, next) => {
+    if (typeof req.query?.profesional === 'string') {
+        req.query.profesional = canonizar(req.query.profesional);
+    }
+    if (typeof req.body?.profesional === 'string') {
+        req.body.profesional = canonizar(req.body.profesional);
+    }
+    next();
+});
+
+// GET /api/profesional/requiere-password?profesional=NOMBRE
+// Lo consulta la pantalla al elegir el nombre, para saber si mostrar el campo de clave.
+// Es deliberadamente público: solo revela si esa persona usa clave, nunca cuál — y el
+// formulario de login tiene que poder preguntarlo antes de tener token.
+router.get('/requiere-password', async (req, res) => {
+    const { profesional } = req.query;   // ya viene canonizado por el middleware de arriba
+    if (!profesional) return res.status(400).json({ error: 'profesional requerido' });
+    try {
+        return res.json({ requiere: await requierePassword(profesional) });
+    } catch (err) {
+        console.error('[profesional/requiere-password]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// POST /api/profesional/login  { profesional, password }
+// Devuelve un token atado a ESE profesional, que la pantalla manda en Authorization.
+router.post('/login', async (req, res) => {
+    const { profesional, password } = req.body;   // profesional ya canonizado
+    if (!profesional) return res.status(400).json({ error: 'profesional requerido' });
+
+    const ip = req.ip || req.socket?.remoteAddress || 'desconocida';
+    if (loginProfBloqueado(ip, profesional)) {
+        return res.status(429).json({ error: 'demasiados_intentos' });
+    }
+
+    try {
+        const { rows } = await query(
+            `SELECT password_hash, requiere_password FROM profesionales WHERE nombre_canonico = $1`,
+            [profesional]
+        );
+        // Misma respuesta para "no existe" y "clave errada": distinguirlas confirmaría a un
+        // curioso qué nombres de usuario son reales.
+        const ok = rows[0]?.password_hash
+            ? await verificar(password, rows[0].password_hash)
+            : false;
+
+        if (!ok) {
+            registrarFalloProf(ip, profesional);
+            registrarEvento({
+                tipo: 'profesional_login_fallido',
+                descripcion: `Intento fallido de ${profesional}`,
+                terminalId: req.headers['x-terminal-id'] || null,
+                datos: { profesional }        // nunca la clave
+            });
+            return res.status(401).json({ error: 'clave_incorrecta' });
+        }
+
+        limpiarFallosProf(ip, profesional);
+        return res.json({ token: crearTokenProfesional(profesional) });
+    } catch (err) {
+        console.error('[profesional/login]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
 
 // Valida que la fecha sea un día calendario real en formato YYYY-MM-DD.
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,11 +95,11 @@ function fechaValida(f) {
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
 }
 
-// GET /api/profesional/asignaciones?profesional=KENDY+ZABALETA[&fecha=YYYY-MM-DD]
+// GET /api/profesional/asignaciones?profesional=ANA+GOMEZ[&fecha=YYYY-MM-DD]
 // Sin fecha → día actual; con fecha pasada → historial de ese día. En ambos casos
 // se devuelven también los finalizados (la vista en vivo los muestra al final, en
 // la sección "Atendidos hoy"); el orden fino de esa sección lo hace el frontend.
-router.get('/asignaciones', validarTerminalId, async (req, res) => {
+router.get('/asignaciones', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional, fecha } = req.query;
     if (!profesional) {
         return res.status(400).json({ error: 'Query param profesional requerido' });
@@ -80,11 +161,18 @@ router.get('/asignaciones', validarTerminalId, async (req, res) => {
 // GET /api/profesional/listado-profesionales
 router.get('/listado-profesionales', async (req, res) => {
     try {
+        // Los que tienen trabajo HOY. Sale de la tabla `profesionales` vía el enlace, no de
+        // un DISTINCT sobre el texto de las asignaciones: así un profesional archivado no
+        // aparece aunque Biofile le haya asignado pacientes.
         const { rows } = await query(
-            `SELECT DISTINCT nombre_profesional FROM asignaciones_profesionales
-             WHERE fecha = CURRENT_DATE AND activo = true ORDER BY nombre_profesional`
+            `SELECT DISTINCT p.nombre_canonico
+               FROM asignaciones_profesionales a
+               JOIN profesionales p ON p.id = a.profesional_id
+              WHERE a.fecha = CURRENT_DATE AND a.activo = true
+                AND NOT p.archivado
+              ORDER BY p.nombre_canonico`
         );
-        return res.json(rows.map(r => r.nombre_profesional));
+        return res.json(rows.map(r => r.nombre_canonico));
     } catch (err) {
         console.error('[profesional/listado-profesionales]', err);
         return res.status(500).json({ error: 'db_error' });
@@ -92,18 +180,22 @@ router.get('/listado-profesionales', async (req, res) => {
 });
 
 // GET /api/profesional/catalogo
-// Nombres de profesionales vistos en los últimos 60 días, para el autocompletar al
-// asignar manualmente. A diferencia de /listado-profesionales (solo HOY, queda vacío
-// temprano), este sugiere el histórico reciente.
+// Catálogo para el autocompletar al asignar a mano. A diferencia de /listado-profesionales
+// (solo los que tienen trabajo HOY, queda vacío temprano), este trae a todos los activos.
+//
+// Antes esto era un DISTINCT sobre los últimos 60 días de asignaciones: un profesional que
+// se ausentaba tres meses desaparecía del autocompletar y volvía solo cuando le asignaban a
+// alguien. No se borraba nada — pero el catálogo se fingía a partir de un log, así que un
+// typo tecleado una vez vivía 60 días y una persona real se volvía invisible. Con la tabla,
+// el catálogo es el catálogo: quién sigue estando lo decide el admin, no la ventana temporal.
 router.get('/catalogo', async (req, res) => {
     try {
         const { rows } = await query(
-            `SELECT DISTINCT nombre_profesional FROM asignaciones_profesionales
-             WHERE fecha >= CURRENT_DATE - INTERVAL '60 days'
-               AND nombre_profesional IS NOT NULL
-             ORDER BY nombre_profesional`
+            `SELECT nombre_canonico FROM profesionales
+              WHERE NOT archivado
+              ORDER BY nombre_canonico`
         );
-        return res.json(rows.map(r => r.nombre_profesional));
+        return res.json(rows.map(r => r.nombre_canonico));
     } catch (err) {
         console.error('[profesional/catalogo]', err);
         return res.status(500).json({ error: 'db_error' });
@@ -113,7 +205,7 @@ router.get('/catalogo', async (req, res) => {
 // GET /api/profesional/resumen-hoy?profesional=NOMBRE
 // Contador "Finalizados hoy" de la pantalla del profesional. La vista en vivo
 // excluye los finalizados, por eso se cuentan aparte aquí.
-router.get('/resumen-hoy', validarTerminalId, async (req, res) => {
+router.get('/resumen-hoy', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional } = req.query;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
@@ -148,7 +240,7 @@ router.get('/consultorios', async (req, res) => {
 });
 
 // POST /api/profesional/llamar/:id
-router.post('/llamar/:id', validarTerminalId, async (req, res) => {
+router.post('/llamar/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional, consultorio } = req.body;
     if (!profesional) return res.status(400).json({ error: 'Campo profesional requerido' });
     try {
@@ -275,7 +367,7 @@ router.post('/llamar/:id', validarTerminalId, async (req, res) => {
 });
 
 // POST /api/profesional/en-atencion/:id
-router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
+router.post('/en-atencion/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional, consultorio } = req.body;
     try {
         const { rows, rowCount } = await query(
@@ -321,7 +413,7 @@ router.post('/en-atencion/:id', validarTerminalId, async (req, res) => {
 });
 
 // POST /api/profesional/cancelar-llamado/:id
-router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
+router.post('/cancelar-llamado/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional } = req.body;
     try {
         const { rows, rowCount } = await query(
@@ -353,7 +445,7 @@ router.post('/cancelar-llamado/:id', validarTerminalId, async (req, res) => {
 });
 
 // POST /api/profesional/finalizar/:id
-router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
+router.post('/finalizar/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional } = req.body;
     try {
         const { rows, rowCount } = await query(
@@ -401,20 +493,29 @@ router.post('/finalizar/:id', validarTerminalId, async (req, res) => {
 // Reasigna manualmente la asignación a otro profesional. Solo sobre filas
 // 'pendiente' o 'cancelado' (nunca en curso). Marca manual_override para que la
 // sincronización del LIS no la revierta.
-router.post('/reasignar/:id', validarTerminalId, async (req, res) => {
+router.post('/reasignar/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional, nuevo_profesional } = req.body;
     if (!nuevo_profesional || !String(nuevo_profesional).trim()) {
         return res.status(400).json({ error: 'nuevo_profesional requerido' });
     }
-    const nuevo = String(nuevo_profesional).trim().toUpperCase();
+    // Canonización real, no un .toUpperCase() a mano: este nombre acaba en columna_header,
+    // que es parte de uq_asig_ingreso_columna y de la llave del delta del sync. Escribirlo
+    // con otra forma que la del sync haría que la reconciliación no reconociera la fila.
+    const nuevo = canonizar(nuevo_profesional);
+    if (!nuevo) return res.status(400).json({ error: 'nuevo_profesional requerido' });
     try {
+        // El profesional se resuelve/crea aquí: reasignar a alguien que Biofile todavía no
+        // ha reportado hoy es justamente el caso para el que existe esta pantalla. Se le
+        // pasa el nombre CRUDO — el servicio canoniza la llave y sanea el display.
+        const profesionalId = await resolverProfesionalId({ query }, nuevo_profesional, 'manual');
         const { rows, rowCount } = await query(
             `UPDATE asignaciones_profesionales
              SET nombre_profesional = $2, columna_header = $2, estado = 'pendiente',
+                 profesional_id = $3,
                  activo = true, manual_override = true, origen_baja = NULL, updated_at = NOW()
              WHERE id = $1 AND estado IN ('pendiente','cancelado')
              RETURNING *`,
-            [req.params.id, nuevo]
+            [req.params.id, nuevo, profesionalId]
         );
         if (rowCount === 0) return res.status(409).json({ error: 'estado_invalido' });
 
@@ -446,7 +547,7 @@ router.post('/reasignar/:id', validarTerminalId, async (req, res) => {
 // Da de baja MANUAL una asignación (distinto de cancelar-llamado, que solo revierte
 // un 'llamando' a 'pendiente'). Solo sobre 'pendiente'/'cancelado'. El override
 // impide que la sincronización del LIS la reviva.
-router.post('/cancelar-asignacion/:id', validarTerminalId, async (req, res) => {
+router.post('/cancelar-asignacion/:id', validarTerminalId, exigirPasswordSiAplica, async (req, res) => {
     const { profesional } = req.body;
     try {
         const { rows, rowCount } = await query(
