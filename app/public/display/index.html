@@ -64,10 +64,10 @@
         .header-right {
             display: flex;
             align-items: center;
-            gap: 16px;
             font-size: .85rem;
             color: rgba(255, 255, 255, .7);
         }
+        .header-right > * + * { margin-left: 16px; }   /* reemplaza gap:16px */
 
         #reloj-display {
             font-size: 1.1rem;
@@ -87,25 +87,32 @@
             box-shadow: 0 0 6px #4ade80;
         }
 
-        /* Layout principal: tres columnas */
+        /* Layout principal: tres columnas.
+           Flexbox (no grid) y min/max-width (no clamp): grid-template-columns con clamp()
+           es inválido en WebViews viejos y colapsa las columnas —los paneles laterales
+           terminan apilados arriba y abajo—. Flexbox + min/max-width funcionan en cualquier
+           motor. El divisor de 1px que daba el `gap` se reemplaza por bordes en el centro. */
         .layout {
             flex: 1;
-            display: grid;
-            grid-template-columns: clamp(220px, 15vw, 300px) 1fr clamp(220px, 15vw, 300px);
-            gap: 1px;
+            display: flex;
             background: var(--borde);
             overflow: hidden;
+            min-height: 0;
         }
 
         /* Columnas laterales */
         .col-lateral {
+            width: 15%;
+            min-width: 220px;
+            max-width: 300px;
+            box-sizing: border-box;
             background: var(--card);
             padding: 16px 12px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 2px;
         }
+        .col-lateral > * + * { margin-top: 2px; }   /* reemplaza gap:2px (no soportado en flex viejo) */
 
         .col-titulo {
             font-size: 1rem;
@@ -193,7 +200,11 @@
 
         /* Centro - llamado actual */
         .col-centro {
+            flex: 1;
+            min-width: 0;
             background: var(--fondo);
+            border-left: 1px solid var(--borde);
+            border-right: 1px solid var(--borde);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -208,9 +219,9 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 16px;
             animation: fadeIn .4s ease;
         }
+        .llamado-container > * + * { margin-top: 16px; }   /* reemplaza gap:16px */
 
         @keyframes fadeIn {
             from {
@@ -245,7 +256,9 @@
         }
 
         .llamado-nombre {
-            font-size: clamp(2rem, 5vw, 3.6rem);
+            /* Tamaño fijo, no clamp(): clamp es inválido en motores viejos y el nombre
+               caería al tamaño heredado (diminuto). En un TV el tamaño es predecible. */
+            font-size: 3.4rem;
             font-weight: 900;
             color: var(--texto);
             line-height: 1.1;
@@ -287,7 +300,6 @@
             right: 0;
             display: flex;
             justify-content: center;
-            gap: 8px;
             flex-wrap: wrap;
         }
 
@@ -305,8 +317,8 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 12px;
         }
+        .sin-llamado > * + * { margin-top: 12px; }   /* reemplaza gap:12px */
 
         .sin-llamado-icono {
             font-size: 5rem;
@@ -344,9 +356,9 @@
     <!-- Overlay de activación de audio: la política de autoplay arranca el AudioContext
      'suspended'; el primer gesto (OK del control o toque) lo reanuda. -->
     <div id="overlay-audio"
-        style="display:none;position:fixed;inset:0;z-index:9999;background:var(--header);color:#fff;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;padding:32px">
+        style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--header);color:#fff;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px">
         <div style="font-size:6.5rem;line-height:1">🔔</div>
-        <div style="font-size:1.7rem;font-weight:800;max-width:80%;line-height:1.3">Presione OK en el control o toque la
+        <div style="font-size:1.7rem;font-weight:800;max-width:80%;line-height:1.3;margin-top:28px">Presione OK en el control o toque la
             pantalla para iniciar</div>
     </div>
 
@@ -443,7 +455,9 @@
         // Escapa texto dinámico antes de inyectarlo en innerHTML (el nombre del consultorio
         // proviene del catálogo administrable, así que puede contener caracteres especiales).
         function escHtml(v) {
-            return String(v ?? '')
+            // `== null` (no ??) atrapa null y undefined: el ?? es error de sintaxis en los
+            // WebViews viejos de los TV box y tumbaría TODO este <script> (reloj, socket, etc.).
+            return String(v == null ? '' : v)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
