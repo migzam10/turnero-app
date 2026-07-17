@@ -252,3 +252,9 @@ Si una TV queda muda o desconectada, se ve en **Admin → Terminales → Pantall
 | Admin | `http://IP_SERVIDOR:3000/admin` |
 
 Crear marcadores en Chrome de cada PC con la URL correspondiente.
+
+Comandos útiles del día a día:
+Restart-Service TurneroApp        # reiniciar (tras git pull o cambio de .env)
+Get-Service TurneroApp            # ver si está corriendo
+Stop-Service TurneroApp           # parar
+Get-Content C:\turnero\app\logs\out.log -Tail 30 -Wait   # logs en vivo
