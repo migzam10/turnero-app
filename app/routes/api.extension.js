@@ -304,11 +304,26 @@ router.post('/sync', async (req, res) => {
                      FOR UPDATE OF ap`,
                     [fechaParam]
                 );
+                // Cédulas que AHORA están siendo atendidas (o llamadas) por algún profesional.
+                // Biofile saca del tablero de seguimiento al paciente mientras lo atienden, así
+                // que el snapshot deja de traerlo: sin este guard la reconciliación cancelaría
+                // las OTRAS asignaciones pendientes de esa persona (las que se muestran
+                // "bloqueadas" en la pantalla del otro profesional) y parpadearían —desaparecen
+                // y vuelven en el siguiente escaneo—. Es la misma condición que calcula el flag
+                // `bloqueado`: si está bloqueado, se protege.
+                const { rows: enServicio } = await rc.query(
+                    `SELECT DISTINCT numero_identificacion FROM asignaciones_profesionales
+                     WHERE fecha = COALESCE($1::date, CURRENT_DATE)
+                       AND activo = true AND estado IN ('llamando','en_atencion')`,
+                    [fechaParam]
+                );
+                const cedulasEnServicio = new Set(enServicio.map(r => r.numero_identificacion));
                 for (const row of existentes) {
                     const clave = claveDe(row.orden_servicio, row.columna_header, row.numero_identificacion);
                     if (claves.has(clave)) continue;                       // sigue en el LIS
                     if (['llamando', 'en_atencion', 'finalizado'].includes(row.estado)) continue; // en curso
                     if (row.manual_override) continue;                     // gestionado por un humano
+                    if (cedulasEnServicio.has(row.numero_identificacion)) continue; // en atención con otro: bloqueada, no se reapa
                     await rc.query(
                         `UPDATE asignaciones_profesionales
                          SET activo = false, estado = 'cancelado',
