@@ -3,6 +3,8 @@ const { query, pool } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
+const { canonizar } = require('../utils/nombreProfesional');
+const { resolverProfesionalId } = require('../services/profesionales');
 
 const router = Router();
 
@@ -238,8 +240,7 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
     if (!nombre_profesional || !String(nombre_profesional).trim()) {
         return res.status(400).json({ error: 'nombre_profesional requerido' });
     }
-    // Normaliza: mayúsculas y colapsa espacios internos.
-    const profesional = String(nombre_profesional).trim().replace(/\s+/g, ' ').toUpperCase();
+    const profesional = nombre_profesional;
 
     try {
         const { rows: pacRows, rowCount: pacCount } = await query(
@@ -252,22 +253,34 @@ router.post('/asignar-profesional/:id', validarTerminalId, async (req, res) => {
         if (pacCount === 0) return res.status(404).json({ error: 'paciente_no_encontrado' });
         const pc = pacRows[0];
 
+        // Canoniza y resuelve el profesional antes de insertar: el nombre acaba en
+        // columna_header, que es parte de la llave única del ingreso y de la del delta
+        // del sync. Si esta pantalla escribiera una forma distinta a la que manda el
+        // sync, la reconciliación no reconocería la fila y la cancelaría como stale.
+        const profesionalCanonico = canonizar(profesional);
+        if (!profesionalCanonico) return res.status(400).json({ error: 'profesional_requerido' });
+        // Se le pasa el nombre CRUDO: el servicio canoniza la llave y sanea el display.
+        // Con el canónico, el display quedaría en mayúsculas y sin tildes.
+        const profesionalId = await resolverProfesionalId({ query }, profesional, 'manual');
+
         const { rows, rowCount } = await query(
             `INSERT INTO asignaciones_profesionales
                 (fecha, paciente_cola_id, numero_identificacion, nombre_paciente,
                  nombre_profesional, columna_header, area, estado, activo,
-                 manual_override, origen, login_name_biofile, consultorio_profesional)
+                 manual_override, origen, login_name_biofile, consultorio_profesional,
+                 profesional_id)
              VALUES ($1, $2, $3, $4, $5, $5, COALESCE(NULLIF(TRIM($6),''),'PARTICULAR'),
-                     'pendiente', true, true, 'manual', NULL, NULL)
+                     'pendiente', true, true, 'manual', NULL, NULL, $7)
              ON CONFLICT (paciente_cola_id, columna_header)
              DO UPDATE SET
                  activo = true, estado = 'pendiente', manual_override = true,
                  origen = 'manual', origen_baja = NULL,
+                 profesional_id = COALESCE(EXCLUDED.profesional_id, asignaciones_profesionales.profesional_id),
                  updated_at = NOW()
              WHERE asignaciones_profesionales.activo = false
              RETURNING *`,
             [pc.fecha, pc.id, pc.numero_identificacion, pc.nombre_paciente,
-             profesional, area || '']
+             profesionalCanonico, area || '', profesionalId]
         );
 
         // RETURNING vacío = ya existía una fila ACTIVA con ese profesional (el WHERE

@@ -4,6 +4,8 @@ const { validarExtensionSecret } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
 const { normalizarIdentificacion } = require('../utils/identificacion');
+const { canonizar } = require('../utils/nombreProfesional');
+const { resolverProfesional } = require('../services/profesionales');
 
 const router = Router();
 
@@ -53,15 +55,30 @@ function dividirNombre(nombre) {
 
 // POST /api/extension/sync
 router.post('/sync', async (req, res) => {
-    const { loginName, terminalId, pacientes, snapshotCompleto } = req.body;
-    if (!loginName || !Array.isArray(pacientes)) {
+    const { loginName, terminalId, pacientes: pacientesCrudos, snapshotCompleto } = req.body;
+    if (!loginName || !Array.isArray(pacientesCrudos)) {
         return res.status(400).json({ error: 'loginName y pacientes[] requeridos' });
     }
 
-    const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, reconciliados: 0, errores: 0 };
+    // El backend canoniza el nombre del profesional; NO confía en que la extensión lo haya
+    // hecho. La extensión corre en el Chrome de cada PC y se actualiza por separado: si la
+    // identidad dependiera de ella, una PC con una versión vieja crearía profesionales
+    // fantasma. Se hace UNA vez aquí, en el borde, porque el mismo valor lo consumen dos
+    // caminos —el upsert y la reconciliación— y `columna_header` es a la vez la llave del
+    // ON CONFLICT y la del delta. Canonizar en uno solo haría que la reconciliación no
+    // reconociera las filas que el upsert acaba de escribir y las cancelara como stale.
+    const pacientes = pacientesCrudos.map(p => ({
+        ...p,
+        nombreProfesional: canonizar(p.nombreProfesional),
+        columnaHeader: canonizar(p.columnaHeader),
+        nombreProfesionalCrudo: p.nombreProfesional,   // se conserva para el display
+    }));
+
+    const resultados = { nuevos: 0, actualizados: 0, autocreados: 0, reconciliados: 0, errores: 0,
+                         profesionalesNuevos: 0 };
 
     for (const p of pacientes) {
-        const { numeroIdentificacion: cedulaCruda, ordenServicio, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha } = p;
+        const { numeroIdentificacion: cedulaCruda, ordenServicio, nombrePaciente, nombreProfesional, area, columnaHeader, horaLlegadaBiofile, fecha, nombreProfesionalCrudo } = p;
         if (!cedulaCruda || !nombreProfesional || !columnaHeader) {
             resultados.errores++;
             continue;
@@ -152,13 +169,21 @@ router.post('/sync', async (req, res) => {
                 resultados.autocreados++;
             }
 
+            // Aprovisiona/refresca al profesional ANTES de la asignación, dentro de la misma
+            // transacción: la FK exige que la fila exista, y si algo falla se deshace todo
+            // junto en vez de dejar un profesional a medio crear.
+            const { id: profesionalId, esNuevo: profesionalNuevo } =
+                await resolverProfesional(client, nombreProfesionalCrudo || nombreProfesional);
+
             const { rows } = await client.query(
                 `INSERT INTO asignaciones_profesionales
                     (fecha, paciente_cola_id, numero_identificacion, nombre_paciente, nombre_profesional,
-                     area, columna_header, hora_llegada_biofile, terminal_id, login_name_biofile)
-                 VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                     area, columna_header, hora_llegada_biofile, terminal_id, login_name_biofile,
+                     profesional_id)
+                 VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                  ON CONFLICT (paciente_cola_id, columna_header)
                  DO UPDATE SET
+                     profesional_id  = COALESCE(EXCLUDED.profesional_id, asignaciones_profesionales.profesional_id),
                      nombre_paciente = COALESCE(EXCLUDED.nombre_paciente, asignaciones_profesionales.nombre_paciente),
                      hora_llegada_biofile = EXCLUDED.hora_llegada_biofile,
                      -- El sello del login se refresca al del último escaneo. Antes quedaba
@@ -183,7 +208,8 @@ router.post('/sync', async (req, res) => {
                      updated_at = NOW()
                  RETURNING (xmax = 0) AS es_nuevo, estado`,
                 [fechaParam, pacienteColaId, numeroIdentificacion, nombrePaciente || null, nombreProfesional,
-                 area, columnaHeader, horaLlegadaBiofile || null, terminalId || null, loginName]
+                 area, columnaHeader, horaLlegadaBiofile || null, terminalId || null, loginName,
+                 profesionalId]
             );
 
             // Reapertura (#1): si el ingreso estaba cerrado y ahora entra un examen ACTIVO
@@ -218,6 +244,10 @@ router.post('/sync', async (req, res) => {
 
             if (rows[0]?.es_nuevo) resultados.nuevos++;
             else resultados.actualizados++;
+            // Después del COMMIT, igual que los contadores de arriba: si la transacción
+            // hubiera hecho rollback el profesional no existiría, y contarlo aquí evita
+            // avisarle al panel de alguien que nunca se creó.
+            if (profesionalNuevo) resultados.profesionalesNuevos++;
 
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
@@ -307,6 +337,18 @@ router.post('/sync', async (req, res) => {
         if (resultados.nuevos > 0) {
             io.to(`profesional:${loginName}`).emit('extension:sync', { loginName, resultados });
         }
+        // Biofile estrenó un profesional: el panel lo muestra sin que nadie recargue.
+        if (resultados.profesionalesNuevos > 0) {
+            io.emit('profesionales:actualizados', { ts: Date.now() });
+        }
+    }
+
+    if (resultados.profesionalesNuevos > 0) {
+        registrarEvento({
+            tipo: 'profesional_descubierto',
+            descripcion: `Sync descubrió ${resultados.profesionalesNuevos} profesional(es) nuevo(s) en Biofile`,
+            terminalId, datos: { loginName, nuevos: resultados.profesionalesNuevos }
+        });
     }
 
     if (resultados.reconciliados > 0) {

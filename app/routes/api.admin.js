@@ -4,6 +4,8 @@ const { crearToken, validarAdminToken,
         loginBloqueado, registrarIntentoFallido, limpiarIntentos } = require('../middleware/adminAuth');
 const { fechaHoyBogota } = require('../utils/fecha');
 const { registrarEvento } = require('../utils/audit');
+const { canonizar, sanear } = require('../utils/nombreProfesional');
+const { hashear } = require('../utils/password');
 
 const router = Router();
 
@@ -137,6 +139,177 @@ router.get('/pantallas', async (req, res) => {
 // CRUD administrado desde Admin. Baja lógica (activo=false) vía PATCH; sin DELETE.
 // `nombre` es texto COMPLETO que ve el paciente; `multipaciente` permite llamar a
 // varios pacientes a la vez desde ese consultorio.
+
+// ── Profesionales ────────────────────────────────────────────────────────────
+// El catálogo real, en vez del SELECT DISTINCT sobre el log de asignaciones que se usaba
+// antes. El sync los descubre solo; aquí se corrige el display, se archiva a quien se fue
+// y se maneja la clave del mini-login.
+router.get('/profesionales', async (req, res) => {
+    try {
+        // `password_hash` JAMÁS sale por la API: solo se informa si tiene clave puesta.
+        const { rows } = await query(
+            `SELECT id, nombre_canonico, nombre_display, archivado, origen,
+                    requiere_password, (password_hash IS NOT NULL) AS tiene_password,
+                    visto_ultima_vez, created_at
+               FROM profesionales
+              ORDER BY archivado, nombre_canonico`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error('[admin/profesionales:list]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// Alta manual. Para el profesional que aún no aparece en Biofile (o que no viene de
+// Biofile en absoluto). El nombre de usuario se canoniza igual que el que llega del sync:
+// si mañana Biofile reporta a esa misma persona, empata con esta fila en vez de crear un
+// duplicado — que es exactamente el punto de que la llave sea canónica.
+router.post('/profesionales', async (req, res) => {
+    const { nombre_usuario, nombre_display } = req.body;
+
+    const canonico = canonizar(nombre_usuario);
+    if (!canonico) return res.status(400).json({ error: 'nombre_usuario_requerido' });
+    if (canonico.length > 120) return res.status(400).json({ error: 'nombre_usuario_muy_largo' });
+
+    const display = String(nombre_display || '').trim() || sanear(nombre_usuario);
+
+    try {
+        const { rows } = await query(
+            `INSERT INTO profesionales (nombre_canonico, nombre_display, origen)
+             VALUES ($1, $2, 'manual')
+             RETURNING id, nombre_canonico, nombre_display, archivado, origen,
+                       requiere_password, (password_hash IS NOT NULL) AS tiene_password,
+                       visto_ultima_vez, created_at`,
+            [canonico, display]
+        );
+        registrarEvento({
+            tipo: 'profesional_creado_manual',
+            descripcion: `Alta manual: ${canonico}`,
+            datos: rows[0]
+        });
+        const io = req.app.get('io');
+        if (io) io.emit('profesionales:actualizados', { ts: Date.now() });
+        return res.status(201).json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'ya_existe' });
+        console.error('[admin/profesionales:create]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// Asignar o quitar la contraseña. Va aparte del PATCH general para que una clave nunca
+// viaje mezclada con cambios cosméticos y no se registre por accidente en un log de
+// auditoría junto al resto del body.
+router.post('/profesionales/:id/password', async (req, res) => {
+    const { password } = req.body;
+
+    try {
+        // password: null | '' => se borra la clave (y se apaga la exigencia, si no quedaría
+        // un profesional al que se le pide una contraseña que ya no tiene y no podría entrar).
+        if (password === null || password === undefined || String(password) === '') {
+            const { rows, rowCount } = await query(
+                `UPDATE profesionales
+                    SET password_hash = NULL, requiere_password = false, updated_at = NOW()
+                  WHERE id = $1
+                  RETURNING id, nombre_canonico, requiere_password,
+                            (password_hash IS NOT NULL) AS tiene_password`,
+                [req.params.id]
+            );
+            if (rowCount === 0) return res.status(404).json({ error: 'no_encontrado' });
+            registrarEvento({
+                tipo: 'profesional_password_borrada',
+                descripcion: `Clave eliminada: ${rows[0].nombre_canonico}`,
+                datos: { id: rows[0].id }        // nunca la clave, obviamente
+            });
+            return res.json(rows[0]);
+        }
+
+        if (String(password).length < 4) return res.status(400).json({ error: 'password_muy_corta' });
+
+        const hash = await hashear(password);
+        const { rows, rowCount } = await query(
+            `UPDATE profesionales SET password_hash = $2, updated_at = NOW()
+              WHERE id = $1
+              RETURNING id, nombre_canonico, requiere_password,
+                        (password_hash IS NOT NULL) AS tiene_password`,
+            [req.params.id, hash]
+        );
+        if (rowCount === 0) return res.status(404).json({ error: 'no_encontrado' });
+
+        registrarEvento({
+            tipo: 'profesional_password_asignada',
+            descripcion: `Clave asignada: ${rows[0].nombre_canonico}`,
+            datos: { id: rows[0].id }
+        });
+        const io = req.app.get('io');
+        if (io) io.emit('profesionales:actualizados', { ts: Date.now() });
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[admin/profesionales:password]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
+
+// Archivar / corregir el display / exigir clave. `nombre_canonico` NO se puede editar: es
+// la llave con la que empatan las asignaciones y la que produce el sync desde Biofile.
+// Cambiarlo a mano rompería el enlace en el siguiente escaneo.
+router.patch('/profesionales/:id', async (req, res) => {
+    const { archivado, nombre_display, requiere_password } = req.body;
+    const sets = [];
+    const vals = [];
+
+    if (archivado !== undefined) {
+        vals.push(archivado === true);
+        sets.push(`archivado = $${vals.length}`);
+    }
+    if (nombre_display !== undefined) {
+        const display = String(nombre_display).trim();
+        if (!display || display.length > 120) return res.status(400).json({ error: 'display_invalido' });
+        vals.push(display);
+        sets.push(`nombre_display = $${vals.length}`);
+    }
+    if (requiere_password !== undefined) {
+        // Exigir clave a quien no la tiene lo dejaría sin poder entrar: la pantalla le
+        // pediría una contraseña contra la que no hay nada que comparar. Se bloquea aquí
+        // en vez de confiar en que la UI esconda el botón.
+        if (requiere_password === true) {
+            const { rows: prof } = await query(
+                `SELECT (password_hash IS NOT NULL) AS tiene FROM profesionales WHERE id = $1`,
+                [req.params.id]
+            );
+            if (!prof[0]) return res.status(404).json({ error: 'no_encontrado' });
+            if (!prof[0].tiene) return res.status(409).json({ error: 'sin_password' });
+        }
+        vals.push(requiere_password === true);
+        sets.push(`requiere_password = $${vals.length}`);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nada_que_actualizar' });
+
+    vals.push(req.params.id);
+    try {
+        const { rows, rowCount } = await query(
+            `UPDATE profesionales SET ${sets.join(', ')}, updated_at = NOW()
+              WHERE id = $${vals.length}
+              RETURNING id, nombre_canonico, nombre_display, archivado, origen, requiere_password,
+                        (password_hash IS NOT NULL) AS tiene_password, visto_ultima_vez`,
+            vals
+        );
+        if (rowCount === 0) return res.status(404).json({ error: 'no_encontrado' });
+
+        registrarEvento({
+            tipo: 'profesional_actualizado',
+            descripcion: `${rows[0].nombre_canonico}: ${sets.join(', ')}`,
+            datos: rows[0]
+        });
+        const io = req.app.get('io');
+        if (io) io.emit('profesionales:actualizados', { ts: Date.now() });
+        return res.json(rows[0]);
+    } catch (err) {
+        console.error('[admin/profesionales:update]', err);
+        return res.status(500).json({ error: 'db_error' });
+    }
+});
 
 router.get('/consultorios', async (req, res) => {
     try {

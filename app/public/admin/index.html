@@ -298,6 +298,33 @@ tr:hover td { background: #f8fafc; }
         </div>
 
         <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Nuevo profesional</span></div>
+            <div class="config-grid">
+                <div class="config-item">
+                    <div class="config-key">Nombre de usuario</div>
+                    <input id="nuevo-prof-usuario" type="text" maxlength="120" placeholder="ANA GOMEZ">
+                    <div class="config-desc">El mismo con el que entra a Biofile. Se normaliza solo.</div>
+                </div>
+                <div class="config-item">
+                    <div class="config-key">Nombre visible</div>
+                    <input id="nuevo-prof-display" type="text" maxlength="120" placeholder="opcional">
+                    <div class="config-desc">Cosmético. Vacío = igual al usuario.</div>
+                </div>
+                <button class="btn-buscar" onclick="crearProfesional()">Crear</button>
+            </div>
+        </div>
+
+        <div class="seccion">
+            <div class="seccion-header"><span class="seccion-titulo">Profesionales</span></div>
+            <div class="tabla-wrapper">
+                <table id="tabla-profesionales">
+                    <thead><tr><th>Nombre de usuario</th><th>Nombre visible</th><th>Origen</th><th>Clave</th><th>Acciones</th></tr></thead>
+                    <tbody id="tbody-profesionales"><tr><td colspan="5" class="loader">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Parámetros del sistema</span>
                 <button class="btn-actualizar" onclick="cargarConfig()">Recargar</button>
@@ -463,6 +490,9 @@ socket.on('config:actualizada', () => window.recargarBranding && window.recargar
 socket.on('UPDATE_PATIENTS', () => refrescarDashboardDebounced());
 // Catálogo de consultorios: cualquier cambio (propio o de otra terminal) recarga la tabla.
 socket.on('consultorios:actualizados', () => { if (adminToken) cargarConsultorios(); });
+// El sync puede descubrir un profesional nuevo en cualquier momento: el panel se entera
+// sin que nadie recargue.
+socket.on('profesionales:actualizados', () => { if (adminToken) cargarProfesionales(); });
 
 // ── Tabs ────────────────────────────────────────────────────────
 function mostrarTab(nombre) {
@@ -477,7 +507,7 @@ function mostrarTab(nombre) {
     if (nombre === 'dashboard') cargarDashboard();
     if (nombre === 'graficas') cargarGraficas();
     // Consultorios y Eventos viven ahora dentro de Configuración.
-    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarConsultorios(); cargarEventos(); }
+    if (nombre === 'configuracion') { cargarConfig(); cargarPersonalizacion(); cargarProfesionales(); cargarConsultorios(); cargarEventos(); }
 
     // Terminales incluye la sección Pantallas; su auto-refresco corre solo con la pestaña activa.
     if (nombre === 'terminales') { cargarTerminales(); cargarPantallas(); iniciarAutoRefrescoPantallas(); }
@@ -996,6 +1026,147 @@ async function cargarGraficas() {
 // Caché de la última tabla cargada. Se usa para resolver el nombre por id en el
 // prompt de renombrar sin embeberlo en el onclick (evita romper el string / XSS,
 // ya que los atributos HTML se decodifican antes de evaluar el JS).
+// ── Profesionales ────────────────────────────────────────────────
+// El catálogo real. El sync los aprovisiona solo; aquí se corrige el nombre visible, se
+// maneja la clave del mini-login y se archivan los que ya no trabajan. El canónico NO se
+// toca: es la llave con la que empatan las asignaciones y la que produce el sync.
+async function cargarProfesionales() {
+    const tbody = document.getElementById('tbody-profesionales');
+    try {
+        const resp = await fetchAdmin('/api/admin/profesionales');
+        const filas = await resp.json();
+        const lista = Array.isArray(filas) ? filas : [];
+
+        if (!lista.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="loader">Aún no hay profesionales. El sync de Biofile los creará solo.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = lista.map(p => {
+            // Tres situaciones distintas y hay que poder distinguirlas de un vistazo: sin
+            // clave, con clave pero sin exigirla, y exigiéndola.
+            const clave = p.requiere_password
+                ? '<span class="badge b-finalizado">Usa clave</span>'
+                : p.tiene_password
+                    ? '<span class="badge b-normal">Clave puesta (no se pide)</span>'
+                    : '<span style="color:var(--gris)">Sin clave</span>';
+
+            const acciones = [];
+            acciones.push(`<button class="btn-mini" onclick="renombrarProfesional('${p.id}')">Nombre visible</button>`);
+            acciones.push(`<button class="btn-mini" onclick="asignarPasswordProfesional('${p.id}', ${p.tiene_password})">${p.tiene_password ? 'Cambiar clave' : 'Asignar clave'}</button>`);
+            if (p.requiere_password) {
+                acciones.push(`<button class="btn-mini" onclick="toggleRequierePassword('${p.id}', false)">No usar clave</button>`);
+            } else if (p.tiene_password) {
+                acciones.push(`<button class="btn-mini" onclick="toggleRequierePassword('${p.id}', true)">Usar clave</button>`);
+            }
+            acciones.push(p.archivado
+                ? `<button class="btn-mini" onclick="archivarProfesional('${p.id}', false)">Restaurar</button>`
+                : `<button class="btn-mini peligro" onclick="archivarProfesional('${p.id}', true)">Archivar</button>`);
+
+            const marca = p.archivado ? ' <span class="badge b-normal">Archivado</span>' : '';
+            return `<tr${p.archivado ? ' style="opacity:.55"' : ''}>
+                <td><b>${esc(p.nombre_canonico)}</b>${marca}</td>
+                <td>${esc(p.nombre_display)}</td>
+                <td><span style="color:var(--gris)">${esc(p.origen)}</span></td>
+                <td>${clave}</td>
+                <td>${acciones.join(' ')}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        if (e.message !== 'no_autorizado') {
+            tbody.innerHTML = '<tr><td colspan="5" class="loader">No se pudo cargar el catálogo.</td></tr>';
+        }
+    }
+}
+
+async function crearProfesional() {
+    const usuario = document.getElementById('nuevo-prof-usuario').value.trim();
+    const display = document.getElementById('nuevo-prof-display').value.trim();
+    if (!usuario) { alert('El nombre de usuario es obligatorio'); return; }
+    try {
+        const resp = await fetchAdmin('/api/admin/profesionales', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre_usuario: usuario, nombre_display: display || undefined })
+        });
+        if (resp.status === 409) { alert('Ya existe un profesional con ese nombre de usuario'); return; }
+        if (!resp.ok) { alert('No se pudo crear el profesional'); return; }
+        document.getElementById('nuevo-prof-usuario').value = '';
+        document.getElementById('nuevo-prof-display').value = '';
+        cargarProfesionales();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('No se pudo crear el profesional');
+    }
+}
+
+// La clave viaja en su propio endpoint (no mezclada con el PATCH cosmético) y no vuelve
+// nunca en las respuestas: la API solo informa si hay clave puesta, jamás cuál es.
+async function asignarPasswordProfesional(id, tienePassword) {
+    const msg = tienePassword
+        ? 'Nueva clave (vacío = quitar la clave y dejar de pedirla):'
+        : 'Clave para este profesional (mínimo 4 caracteres):';
+    const clave = prompt(msg);
+    if (clave === null) return;
+    if (clave !== '' && clave.length < 4) { alert('La clave debe tener al menos 4 caracteres'); return; }
+    try {
+        const resp = await fetchAdmin(`/api/admin/profesionales/${id}/password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: clave === '' ? null : clave })
+        });
+        if (!resp.ok) { alert('No se pudo actualizar la clave'); return; }
+        cargarProfesionales();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('No se pudo actualizar la clave');
+    }
+}
+
+async function toggleRequierePassword(id, requiere) {
+    try {
+        const resp = await fetchAdmin(`/api/admin/profesionales/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requiere_password: requiere })
+        });
+        // El backend rechaza exigir clave a quien no la tiene: quedaría sin poder entrar.
+        if (resp.status === 409) { alert('Primero asígnale una clave a este profesional'); return; }
+        if (!resp.ok) { alert('No se pudo actualizar'); return; }
+        cargarProfesionales();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('No se pudo actualizar');
+    }
+}
+
+async function archivarProfesional(id, archivado) {
+    if (archivado && !confirm('¿Archivar este profesional? Deja de aparecer en los listados, pero su historia se conserva.')) return;
+    try {
+        const resp = await fetchAdmin(`/api/admin/profesionales/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archivado })
+        });
+        if (!resp.ok) { alert('No se pudo actualizar el profesional'); return; }
+        cargarProfesionales();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('No se pudo actualizar el profesional');
+    }
+}
+
+async function renombrarProfesional(id) {
+    const nuevo = prompt('Nombre visible (solo cosmético — la llave interna no cambia):');
+    if (nuevo === null || !nuevo.trim()) return;
+    try {
+        const resp = await fetchAdmin(`/api/admin/profesionales/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre_display: nuevo.trim() })
+        });
+        if (!resp.ok) { alert('No se pudo renombrar'); return; }
+        cargarProfesionales();
+    } catch (e) {
+        if (e.message !== 'no_autorizado') alert('No se pudo renombrar');
+    }
+}
+
 let consultoriosCache = [];
 
 // Carga todas las filas (activas e inactivas) y las pinta en la tabla. Cada acción
