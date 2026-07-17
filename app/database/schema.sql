@@ -260,3 +260,114 @@ ALTER TABLE asignaciones_profesionales
     DROP CONSTRAINT IF EXISTS asignaciones_profesionales_fecha_numero_identificacion_colu_key;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_asig_ingreso_columna
     ON asignaciones_profesionales(paciente_cola_id, columna_header);
+
+-- ── Profesionales como entidad propia (v9) ───────────────────────────────────
+-- Hasta aquí el profesional era la única entidad del sistema SIN identidad: el paciente
+-- tiene cédula, el consultorio y el terminal tienen UUID, y el profesional era un string
+-- suelto en cada asignación. El "catálogo" se fingía con un SELECT DISTINCT sobre el log
+-- de asignaciones, así que un typo al asignar a mano creaba un profesional fantasma.
+--
+-- Biofile no expone un identificador del profesional: el tablero solo trae el nombre como
+-- texto, tal cual lo tecleó quien creó la cuenta (en esta misma BD conviven
+-- 'ANA GOMEZ' y 'luis torres'). Por eso la llave es el nombre CANONIZADO: así el
+-- profesional creado a mano y el que después reporte Biofile son la misma fila.
+
+-- Debe producir exactamente lo mismo que app/utils/nombreProfesional.js.
+--   1. NFC        — el DOM raspado puede venir descompuesto (n + tilde combinante).
+--   2. espacios   — el tablero emite &nbsp;. Se listan explícitos: \s en PostgreSQL NO
+--                   captura U+00A0 (en JavaScript sí).
+--   3. quita "(ÁREA)" final, 4. pliega tildes y sube la ñ, 5. mayúsculas, 6. colapsa.
+--
+-- El translate va ANTES del upper a propósito: upper() depende del locale de la BD y en
+-- 'C'/'POSIX' deja intactas ñ y vocales acentuadas (upper('muñoz') -> 'MUñOZ'), lo que
+-- haría divergir esta función del JS según cómo se instaló PostgreSQL. Plegando primero,
+-- upper() solo ve ASCII y el resultado es el mismo en cualquier locale.
+--
+-- La ñ no se pliega: la tilde es ortográfica (MARÍA = MARIA) pero la ñ es otra letra —
+-- PEÑA y PENA son dos apellidos reales. Partir a una persona en dos se ve en el catálogo
+-- y se arregla; fusionar a dos en una es silencioso y le muestra a un profesional los
+-- pacientes de otro.
+CREATE OR REPLACE FUNCTION canonizar_nombre_profesional(txt TEXT) RETURNS TEXT AS $$
+    SELECT trim(regexp_replace(
+             upper(translate(
+               regexp_replace(
+                 regexp_replace(normalize(coalesce(txt,''), NFC),
+                                U&'[\00a0\1680\2000-\200a\2028\2029\202f\205f\3000\feff]', ' ', 'g'),
+                 '\s*\([^)]*\)\s*$', '', 'g'),
+               'áéíóúüÁÉÍÓÚÜñ','aeiouuAEIOUUÑ')),
+             '\s+',' ','g'));
+$$ LANGUAGE SQL IMMUTABLE;
+
+-- `archivado` en vez de una máquina de estados: el profesional nace utilizable y se
+-- archiva cuando se va o cuando fue un typo. Antes un nombre errado se moría solo a los
+-- 60 días (la ventana del DISTINCT); con tabla queda para siempre, y esta es la salida.
+CREATE TABLE IF NOT EXISTS profesionales (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre_canonico   VARCHAR(120) NOT NULL UNIQUE,  -- 'ANA GOMEZ' — la llave
+    nombre_display    VARCHAR(120) NOT NULL,         -- cosmético; lo corrige el admin
+    archivado         BOOLEAN NOT NULL DEFAULT false,
+    origen            VARCHAR(20) NOT NULL DEFAULT 'biofile'
+                        CHECK (origen IN ('biofile','manual')),
+    -- Mini-login opcional POR PROFESIONAL: sin esto cualquiera teclea el nombre de otro y
+    -- ve sus pacientes. `requiere_password` se separa de `password_hash IS NOT NULL` para
+    -- poder apagar la exigencia sin perder el hash. El área NO va aquí: el paréntesis del
+    -- tablero es el área de esa atención puntual, y la misma persona rota entre varias.
+    password_hash     VARCHAR(255),
+    requiere_password BOOLEAN NOT NULL DEFAULT false,
+    visto_ultima_vez  TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_profesionales_archivado ON profesionales(archivado);
+
+-- Backfill desde el log de asignaciones. Si dos formas crudas canonizan igual se fusionan
+-- solas: eso es la corrección, no un efecto colateral. El display se toma de la forma
+-- vista más recientemente.
+INSERT INTO profesionales (nombre_canonico, nombre_display, origen, visto_ultima_vez)
+SELECT canon,
+       (array_agg(crudo ORDER BY fecha DESC, created_at DESC))[1],
+       'biofile', MAX(created_at)
+  FROM (SELECT canonizar_nombre_profesional(nombre_profesional) AS canon,
+               nombre_profesional AS crudo, fecha, created_at
+          FROM asignaciones_profesionales
+         WHERE canonizar_nombre_profesional(nombre_profesional) <> '') t
+ GROUP BY canon
+ON CONFLICT (nombre_canonico) DO NOTHING;
+
+-- El enlace. Nullable a propósito: una asignación sin profesional resoluble no debe
+-- impedir que el paciente se atienda.
+ALTER TABLE asignaciones_profesionales
+    ADD COLUMN IF NOT EXISTS profesional_id UUID REFERENCES profesionales(id);
+CREATE INDEX IF NOT EXISTS idx_asig_profesional_id
+    ON asignaciones_profesionales(profesional_id);
+
+UPDATE asignaciones_profesionales a
+   SET profesional_id = p.id
+  FROM profesionales p
+ WHERE a.profesional_id IS NULL
+   AND p.nombre_canonico = canonizar_nombre_profesional(a.nombre_profesional);
+
+-- Alinea los nombres ya guardados con lo que el sync produce de ahora en adelante.
+-- columna_header es parte de uq_asig_ingreso_columna, la llave del ON CONFLICT del sync:
+-- si las filas viejas quedaran crudas y el sync mandara canónico, el upsert no encontraría
+-- la fila y crearía una segunda (paciente duplicado en pantalla).
+--
+-- Solo se tocan las filas cuya forma canónica es ÚNICA dentro de su ingreso. Si dos filas
+-- del mismo ingreso canonizan igual, actualizarlas violaría el índice único y tumbaría el
+-- arranque (server.js hace exit(1) si la migración falla). Esas se dejan crudas: la
+-- reconciliación del sync las da de baja como stale en el siguiente escaneo.
+UPDATE asignaciones_profesionales
+   SET nombre_profesional = canonizar_nombre_profesional(nombre_profesional),
+       columna_header     = canonizar_nombre_profesional(columna_header)
+ WHERE id IN (
+       SELECT id FROM (
+         SELECT id,
+                columna_header,
+                canonizar_nombre_profesional(columna_header) AS canon,
+                COUNT(*) OVER (PARTITION BY paciente_cola_id,
+                                            canonizar_nombre_profesional(columna_header)) AS n
+           FROM asignaciones_profesionales) t
+        WHERE n = 1
+          AND canon <> columna_header
+          AND canon <> '');
