@@ -765,6 +765,8 @@ function renderItem(p, atenuado) {
     }[p.estado_admision] || p.estado_admision;
 
     const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+    // Turno del día (solo los de recepción lo tienen). Los de Biofile van sin número.
+    const turno = p.turno_numero != null ? ` (${p.turno_numero})` : '';
 
     // Editar y Eliminar solo mientras el paciente sigue 'esperando' (el backend rechaza
     // ambas acciones una vez llamado/admisionado). El id va en el onclick (UUID seguro);
@@ -778,7 +780,7 @@ function renderItem(p, atenuado) {
     return `<div class="cola-item${atenuado ? ' atenuado' : ''}" onclick="abrirModalPrioridad('${p.id}')">
         <span class="badge-pri pri-${esc(p.prioridad)}">${esc(String(p.prioridad || '').toUpperCase())}</span>
         <span class="cola-nombre">${esc(p.nombre_completo)}</span>
-        <span class="cola-estado estado-${esc(p.estado_admision)}">${esc(estadoLabel)} ${hora}</span>
+        <span class="cola-estado estado-${esc(p.estado_admision)}">${esc(estadoLabel)} ${hora}${turno}</span>
         ${acciones}
     </div>`;
 }

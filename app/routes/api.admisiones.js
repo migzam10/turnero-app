@@ -24,7 +24,7 @@ router.get('/cola', validarTerminalId, async (req, res) => {
                     primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
                     ciudad_expedicion, tipo_identificacion, fecha_nacimiento,
                     prioridad, estado_admision, hora_llegada, modulo_admision,
-                    hora_llamado_admision, hora_admision, nota
+                    hora_llamado_admision, hora_admision, nota, turno_numero
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
                AND estado_admision IN ('esperando','llamando_admision','admisionando','admisionado')

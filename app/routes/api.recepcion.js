@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { query } = require('../database/db');
+const { query, pool } = require('../database/db');
 const { validarTerminalId } = require('../middleware/validar');
 const { emitUpdatePatients } = require('../sockets/notify');
 const { registrarEvento } = require('../utils/audit');
@@ -15,7 +15,7 @@ router.get('/cola', async (req, res) => {
                     primer_nombre || ' ' || COALESCE(segundo_nombre || ' ','') ||
                     primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_completo,
                     prioridad, estado_admision, hora_llegada, modulo_admision,
-                    nota
+                    nota, turno_numero
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
              ORDER BY
@@ -76,29 +76,37 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
     // se guarda la forma canónica para que el cruce del sync encuentre al paciente.
     const cedula = normalizarIdentificacion(numero_identificacion);
 
-    try {
-        // Validar UUID del terminal antes de insertar
-        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const terminalUUID = UUID_RE.test(req.terminalId) ? req.terminalId : null;
+    // Validar UUID del terminal antes de insertar
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const terminalUUID = UUID_RE.test(req.terminalId) ? req.terminalId : null;
+    const fechaParam = fecha_nacimiento || '';
 
-        const fechaParam = fecha_nacimiento || '';
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Turnero del día: número correlativo que reinicia en 1 cada jornada. Solo lo
+        // reciben los ingresos de recepción (los autocreados por Biofile quedan NULL). El
+        // advisory lock serializa el MAX+1 entre terminales de recepción para que dos
+        // registros simultáneos no tomen el mismo número. Se libera al COMMIT/ROLLBACK.
+        await client.query('SELECT pg_advisory_xact_lock(4242)');
 
         // Sin ON CONFLICT: cada registro es un INGRESO nuevo. El índice parcial
         // uq_cola_shell_abierto garantiza a lo sumo un registro de recepción ABIERTO y sin
         // OS por (fecha, cédula); si ya hay uno lanza 23505 y se responde 409. Si la
         // atención previa quedó cerrada, la fila entra como un ingreso separado.
-        const { rows } = await query(
+        const { rows } = await client.query(
             `INSERT INTO pacientes_cola
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
                  primer_apellido, segundo_apellido, ciudad_expedicion, fecha_nacimiento,
-                 sexo, prioridad, terminal_recepcion_id, nota)
+                 sexo, prioridad, terminal_recepcion_id, nota, turno_numero)
              VALUES ($1,$2,$3,$4,$5,$6,$7,
                      CASE
                          WHEN $8 = '' THEN NULL
                          WHEN $8 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $8::DATE
                          ELSE TO_DATE($8, 'DD/MM/YYYY')
                      END,
-                     $9,$10,$11,$12)
+                     $9,$10,$11,$12,
+                     (SELECT COALESCE(MAX(turno_numero),0)+1 FROM pacientes_cola WHERE fecha = CURRENT_DATE))
              RETURNING *`,
             [cedula, tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
@@ -106,6 +114,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
              fechaParam, sexoNorm, prioridad, terminalUUID, notaLimpia]
         );
+        await client.query('COMMIT');
 
         const io = req.app.get('io');
         io.to('recepcion').emit('paciente:nuevo', rows[0]);
@@ -121,6 +130,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
 
         return res.status(201).json(rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         // 23505 en uq_cola_shell_abierto = ya hay un registro de recepción abierto y aún
         // SIN vincular a una OS de Biofile. No se duplica; cuando ese registro se vincula
         // a su OS (o se cierra), recepción puede volver a listar al paciente.
@@ -135,6 +145,8 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         }
         console.error('[recepcion/registrar]', err);
         return res.status(500).json({ error: 'db_error' });
+    } finally {
+        client.release();
     }
 });
 
