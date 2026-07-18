@@ -372,6 +372,14 @@ UPDATE asignaciones_profesionales
           AND canon <> columna_header
           AND canon <> '');
 
--- ── Nota de recepción (v11) ──────────────────────────────────────────────────
+-- ── Nota de recepción + turnero diario (v11) ─────────────────────────────────
 -- `nota`: texto libre que el personal de recepción deja para admisiones (máx 300).
+-- `turno_numero`: correlativo del día que se REINICIA en 1 cada jornada. Se asigna solo
+-- a los ingresos creados por recepción (los autocreados por Biofile quedan NULL, sin
+-- número). El número lo pone el endpoint /registrar tomando MAX(dia)+1 bajo un advisory
+-- lock, no un trigger: así solo lo reciben los de recepción y no todos los inserts.
 ALTER TABLE pacientes_cola ADD COLUMN IF NOT EXISTS nota VARCHAR(300);
+ALTER TABLE pacientes_cola ADD COLUMN IF NOT EXISTS turno_numero INTEGER;
+-- Único por día; parcial para que los muchos NULL (Biofile) no choquen entre sí.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_turno_dia
+    ON pacientes_cola(fecha, turno_numero) WHERE turno_numero IS NOT NULL;

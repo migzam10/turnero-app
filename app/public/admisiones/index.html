@@ -419,7 +419,8 @@ function renderCola() {
         const admisionando = p.estado_admision === 'admisionando' && !otro;
         const activo = llamando || admisionando; // marca de tarjeta para ambas etapas en proceso
         const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-        // Botón de nota si recepción dejó una.
+        // Turno del día (solo los de recepción lo tienen) y botón de nota si recepción dejó una.
+        const turno = p.turno_numero != null ? ` (${p.turno_numero})` : '';
         const btnNota = p.nota ? `<button class="btn-sm btn-nota" onclick="verNota('${p.id}')">Nota</button>` : '';
 
         // Flujo de dos pasos (módulo propio): al "Llamar" la fila no se mueve, solo cambian
@@ -455,7 +456,7 @@ function renderCola() {
                 <div class="pri-dot pri-${esc(p.prioridad)}"></div>
                 <div class="pac-info">
                     <div class="pac-nombre">${esc(p.nombre_completo)}</div>
-                    <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}${subExtra}</div>
+                    <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}${turno}${subExtra}</div>
                 </div>
             </div>
             <div class="pac-btns">${botones}${btnNota}</div>
@@ -470,8 +471,9 @@ function renderCola() {
             + admisionadosMostrados.map(p => {
                 const horaLlegada = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
                 const horaAdmision = p.hora_admision ? new Date(p.hora_admision).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                const turno = p.turno_numero != null ? ` (${p.turno_numero})` : '';
                 const btnNota = p.nota ? `<button class="btn-sm btn-nota" onclick="verNota('${p.id}')">Nota</button>` : '';
-                const sub = [esc(p.numero_identificacion), horaLlegada && `Llegó ${horaLlegada}`, horaAdmision && `Admisionado ${horaAdmision}`].filter(Boolean).join(' · ');
+                const sub = [esc(p.numero_identificacion) + (horaLlegada ? ` · Llegó ${horaLlegada}` : '') + (horaAdmision ? ` · Admisionado ${horaAdmision}` : '') + turno];
                 return `<div class="pac-card atenuado">
                     <div class="pac-top">
                         <div class="pri-dot pri-${esc(p.prioridad)}"></div>
