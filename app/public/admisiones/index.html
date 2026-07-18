@@ -73,6 +73,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
 .btn-sm.btn-sonar:hover { background: #ddd6fe; }
 .btn-sm.btn-asignar { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
 .btn-sm.btn-asignar:hover { background: #c7d2fe; }
+.btn-sm.btn-nota { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.btn-sm.btn-nota:hover { background: #fde68a; }
 
 /* Formulario "Asignar a profesional" (autocompletar con texto libre) */
 .asig-grupo { margin-bottom: 12px; position: relative; }
@@ -179,6 +181,17 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
         <div class="modal-footer">
             <button class="btn-sm btn-llamar" style="flex:1;padding:9px;" onclick="llamarDesdeModal()">Llamar</button>
             <button class="btn-outline" onclick="cerrarModal()">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: nota que dejó recepción -->
+<div class="modal-overlay" id="modal-nota">
+    <div class="modal">
+        <div class="modal-titulo">Nota de recepción</div>
+        <div id="modal-nota-texto" style="white-space:pre-wrap;line-height:1.5;margin:10px 0 4px;color:var(--texto)">—</div>
+        <div class="modal-footer">
+            <button class="btn-outline" onclick="cerrarModalNota()" style="flex:1">Cerrar</button>
         </div>
     </div>
 </div>
@@ -406,6 +419,8 @@ function renderCola() {
         const admisionando = p.estado_admision === 'admisionando' && !otro;
         const activo = llamando || admisionando; // marca de tarjeta para ambas etapas en proceso
         const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+        // Botón de nota si recepción dejó una.
+        const btnNota = p.nota ? `<button class="btn-sm btn-nota" onclick="verNota('${p.id}')">Nota</button>` : '';
 
         // Flujo de dos pasos (módulo propio): al "Llamar" la fila no se mueve, solo cambian
         // sus controles. Otro módulo → tarjeta atenuada con badge y solo "Ver datos".
@@ -443,7 +458,7 @@ function renderCola() {
                     <div class="pac-sub">${esc(p.numero_identificacion)} · ${hora}${subExtra}</div>
                 </div>
             </div>
-            <div class="pac-btns">${botones}</div>
+            <div class="pac-btns">${botones}${btnNota}</div>
         </div>`;
     }).join('') : '<div class="vacia" style="padding:24px 16px">No hay pacientes en espera</div>';
 
@@ -455,6 +470,7 @@ function renderCola() {
             + admisionadosMostrados.map(p => {
                 const horaLlegada = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
                 const horaAdmision = p.hora_admision ? new Date(p.hora_admision).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                const btnNota = p.nota ? `<button class="btn-sm btn-nota" onclick="verNota('${p.id}')">Nota</button>` : '';
                 const sub = [esc(p.numero_identificacion), horaLlegada && `Llegó ${horaLlegada}`, horaAdmision && `Admisionado ${horaAdmision}`].filter(Boolean).join(' · ');
                 return `<div class="pac-card atenuado">
                     <div class="pac-top">
@@ -467,6 +483,7 @@ function renderCola() {
                     <div class="pac-btns">
                         <button class="btn-sm btn-ver" onclick="verPaciente('${p.id}')">Ver datos</button>
                         <button class="btn-sm btn-asignar" onclick="abrirAsignar('${p.id}')">Asignar a profesional</button>
+                        ${btnNota}
                     </div>
                 </div>`;
             }).join('');
@@ -610,6 +627,18 @@ async function llamarDesdeModal() {
     if (!pacienteModalData) return;
     await llamarPaciente(pacienteModalData.id);
     cerrarModal();
+}
+
+// Muestra la nota que dejó recepción. El texto se resuelve del cache por id (nunca se
+// interpola en el onclick) y va por textContent (no innerHTML) → no hay inyección.
+function verNota(id) {
+    const p = colaActual.find(x => x.id === id);
+    if (!p || !p.nota) return;
+    document.getElementById('modal-nota-texto').textContent = p.nota;
+    document.getElementById('modal-nota').classList.add('visible');
+}
+function cerrarModalNota() {
+    document.getElementById('modal-nota').classList.remove('visible');
 }
 
 async function cambiarPrioridadModal(id, pri) {

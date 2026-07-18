@@ -14,7 +14,8 @@ router.get('/cola', async (req, res) => {
             `SELECT id, numero_identificacion,
                     primer_nombre || ' ' || COALESCE(segundo_nombre || ' ','') ||
                     primer_apellido || COALESCE(' ' || segundo_apellido,'') AS nombre_completo,
-                    prioridad, estado_admision, hora_llegada, modulo_admision
+                    prioridad, estado_admision, hora_llegada, modulo_admision,
+                    nota
              FROM pacientes_cola
              WHERE fecha = CURRENT_DATE
              ORDER BY
@@ -35,7 +36,7 @@ router.get('/:id', async (req, res) => {
         const { rows, rowCount } = await query(
             `SELECT id, numero_identificacion, tipo_identificacion,
                     primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
-                    ciudad_expedicion, sexo, prioridad, estado_admision,
+                    ciudad_expedicion, sexo, prioridad, estado_admision, nota,
                     TO_CHAR(fecha_nacimiento, 'DD/MM/YYYY') AS fecha_nacimiento
              FROM pacientes_cola
              WHERE id = $1 AND fecha = CURRENT_DATE`,
@@ -56,7 +57,7 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
         primer_nombre, segundo_nombre,
         primer_apellido, segundo_apellido,
         ciudad_expedicion, fecha_nacimiento, sexo,
-        prioridad = 'normal'
+        prioridad = 'normal', nota
     } = req.body;
 
     if (!numero_identificacion || !primer_nombre || !primer_apellido) {
@@ -67,6 +68,9 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
 
     // Normalizar sexo: solo se acepta 'M' o 'F'; cualquier otro valor se guarda como NULL.
     const sexoNorm = ['M', 'F'].includes((sexo || '').toUpperCase()) ? sexo.toUpperCase() : null;
+
+    // Nota libre para admisiones: recortada a 300 (la columna es VARCHAR(300)); vacío = NULL.
+    const notaLimpia = (nota == null ? '' : String(nota)).trim().slice(0, 300) || null;
 
     // El lector rellena con ceros a la izquierda hasta 10 dígitos y Biofile no los usa:
     // se guarda la forma canónica para que el cruce del sync encuentre al paciente.
@@ -87,20 +91,20 @@ router.post('/registrar', validarTerminalId, async (req, res) => {
             `INSERT INTO pacientes_cola
                 (numero_identificacion, tipo_identificacion, primer_nombre, segundo_nombre,
                  primer_apellido, segundo_apellido, ciudad_expedicion, fecha_nacimiento,
-                 sexo, prioridad, terminal_recepcion_id)
+                 sexo, prioridad, terminal_recepcion_id, nota)
              VALUES ($1,$2,$3,$4,$5,$6,$7,
                      CASE
                          WHEN $8 = '' THEN NULL
                          WHEN $8 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $8::DATE
                          ELSE TO_DATE($8, 'DD/MM/YYYY')
                      END,
-                     $9,$10,$11)
+                     $9,$10,$11,$12)
              RETURNING *`,
             [cedula, tipo_identificacion,
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
-             fechaParam, sexoNorm, prioridad, terminalUUID]
+             fechaParam, sexoNorm, prioridad, terminalUUID, notaLimpia]
         );
 
         const io = req.app.get('io');
@@ -142,7 +146,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
         numero_identificacion, tipo_identificacion = 'CC',
         primer_nombre, segundo_nombre,
         primer_apellido, segundo_apellido,
-        ciudad_expedicion, fecha_nacimiento, sexo
+        ciudad_expedicion, fecha_nacimiento, sexo, nota
     } = req.body;
 
     if (!numero_identificacion || !primer_nombre || !primer_apellido) {
@@ -152,6 +156,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
     }
 
     const sexoNorm = ['M', 'F'].includes((sexo || '').toUpperCase()) ? sexo.toUpperCase() : null;
+    const notaLimpia = (nota == null ? '' : String(nota)).trim().slice(0, 300) || null;
     const fechaParam = fecha_nacimiento || '';
 
     try {
@@ -170,6 +175,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
                     ELSE TO_DATE($8, 'DD/MM/YYYY')
                 END,
                 sexo                  = $9,
+                nota                  = $11,
                 updated_at            = NOW()
              WHERE id = $10 AND fecha = CURRENT_DATE AND estado_admision = 'esperando'
              RETURNING *`,
@@ -177,7 +183,7 @@ router.put('/:id', validarTerminalId, async (req, res) => {
              primer_nombre.toUpperCase(), segundo_nombre ? segundo_nombre.toUpperCase() : null,
              primer_apellido.toUpperCase(), segundo_apellido ? segundo_apellido.toUpperCase() : null,
              ciudad_expedicion ? ciudad_expedicion.toUpperCase() : null,
-             fechaParam, sexoNorm, req.params.id]
+             fechaParam, sexoNorm, req.params.id, notaLimpia]
         );
 
         if (rowCount === 0) {
