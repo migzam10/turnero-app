@@ -213,6 +213,16 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
                 </div>
             </div>
 
+            <!-- 9. Nota para admisiones (opcional, máx 300) -->
+            <div class="campo-grupo full">
+                <label class="campo-label">Nota para admisiones</label>
+                <textarea class="campo-input" id="f-nota" maxlength="300" rows="2"
+                          placeholder="Observación para admisiones (opcional)"
+                          oninput="actualizarContadorNota()"
+                          style="resize:vertical;min-height:40px;width:100%"></textarea>
+                <div id="nota-contador" style="font-size:.7rem;color:var(--gris);text-align:right;margin-top:2px">0/300</div>
+            </div>
+
             <!-- Prioridad del registro (se oculta en modo edición) -->
             <div class="campo-grupo full" id="grupo-prioridad">
                 <label class="campo-label">Prioridad</label>
@@ -520,6 +530,8 @@ function mostrarPreview(datos, formato) {
     setVal('f-nombre1', datos.primer_nombre || '');
     setVal('f-nombre2', datos.segundo_nombre || '');
     setSexo(datos.sexo || '');
+    setVal('f-nota', '');            // el escaneo es un registro nuevo: la nota arranca vacía
+    actualizarContadorNota();
 
     limpiarMensaje();
 
@@ -605,6 +617,7 @@ async function registrarPaciente() {
         primer_nombre: nombre1,
         segundo_nombre: document.getElementById('f-nombre2').value.trim().toUpperCase(),
         sexo: document.getElementById('f-sexo').value,
+        nota: document.getElementById('f-nota').value.trim(),
         prioridad: prioridadActual
     };
 
@@ -661,6 +674,8 @@ async function editarPaciente(id) {
         setVal('f-nombre1', p.primer_nombre || '');
         setVal('f-nombre2', p.segundo_nombre || '');
         document.getElementById('f-sexo').value = ['M', 'F'].includes(p.sexo) ? p.sexo : '';
+        setVal('f-nota', p.nota || '');
+        actualizarContadorNota();
 
         editandoId = id;
         // En edición la prioridad no se toca (el PUT no la actualiza; se cambia desde la cola).
@@ -675,12 +690,20 @@ async function editarPaciente(id) {
     }
 }
 
+// Contador de caracteres de la nota (la columna tope en 300).
+function actualizarContadorNota() {
+    const ta = document.getElementById('f-nota');
+    const c = document.getElementById('nota-contador');
+    if (ta && c) c.textContent = `${ta.value.length}/300`;
+}
+
 // El botón "Cancelar" ya no cierra el formulario: vacía todos sus campos.
 function resetearFormulario() {
-    ['f-cedula', 'f-fecha', 'f-apellido1', 'f-apellido2', 'f-nombre1', 'f-nombre2']
+    ['f-cedula', 'f-fecha', 'f-apellido1', 'f-apellido2', 'f-nombre1', 'f-nombre2', 'f-nota']
         .forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('f-tipo').value = 'CC';
     document.getElementById('f-sexo').value = '';
+    actualizarContadorNota();
     document.getElementById('badge-formato').textContent = 'MANUAL';
     // Restaurar la prioridad a 'normal' y volver a mostrar su selector (oculto en edición).
     document.getElementById('grupo-prioridad').style.display = '';

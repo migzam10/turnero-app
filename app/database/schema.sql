@@ -371,3 +371,7 @@ UPDATE asignaciones_profesionales
         WHERE n = 1
           AND canon <> columna_header
           AND canon <> '');
+
+-- ── Nota de recepción (v11) ──────────────────────────────────────────────────
+-- `nota`: texto libre que el personal de recepción deja para admisiones (máx 300).
+ALTER TABLE pacientes_cola ADD COLUMN IF NOT EXISTS nota VARCHAR(300);
