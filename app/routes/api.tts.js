@@ -8,7 +8,11 @@ const { edicionPlus } = require('../utils/edicion');
 
 const router = Router();
 
-const CACHE_DIR = path.join(__dirname, '..', '..', 'vendor', 'tts-cache');
+// La caché de voz se ESCRIBE en runtime, así que no puede vivir dentro del snapshot de
+// solo lectura del .exe (pkg). Cuando corre empaquetado (process.pkg), se ancla junto al
+// ejecutable (disco real y escribible); en Node normal, junto a la app como siempre.
+const APP_ROOT = process.pkg ? path.dirname(process.execPath) : path.join(__dirname, '..', '..');
+const CACHE_DIR = path.join(APP_ROOT, 'vendor', 'tts-cache');
 const MAX_TEXTO = 200;
 const PURGA_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
 
