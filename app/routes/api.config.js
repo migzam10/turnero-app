@@ -12,7 +12,7 @@ router.get('/publica', async (req, res) => {
         const { rows } = await query(
             `SELECT clave, valor FROM configuracion
              WHERE clave IN ('titulo_sufijo', 'display_logo', 'sonido_habilitado', 'duracion_anuncio_seg',
-                             'voz_habilitada', 'voz_plantilla')`
+                             'voz_habilitada', 'voz_plantilla', 'mostrar_turno')`
         );
         const cfg = Object.fromEntries(rows.map(r => [r.clave, r.valor]));
         return res.json({
@@ -22,6 +22,7 @@ router.get('/publica', async (req, res) => {
             duracion_anuncio_seg: Math.min(30, Math.max(4, parseInt(cfg.duracion_anuncio_seg, 10) || 8)),
             voz_habilitada: cfg.voz_habilitada === 'true',   // default false
             voz_plantilla: cfg.voz_plantilla || 'Turno para {nombre}. Diríjase a {destino}.',
+            mostrar_turno: cfg.mostrar_turno !== 'false',   // default true
             // Edición de licencia (candado comercial): 'basica' | 'plus'. Fija en el .env,
             // el cliente no la cambia. La voz solo aplica en 'plus'.
             voz_incluida: edicionPlus()

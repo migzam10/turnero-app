@@ -28,6 +28,8 @@ sincronizar.sh
 # Backups de la BD generados por scripts/backup-db.sh
 backups/
 
+scripts/fase0-analisis*
+
 # Binarios/modelos de TTS (piper) y cache de audio generado en el servidor.
 # **/ cubre tanto la raíz como app/vendor (según desde dónde se corra setup-tts).
 **/vendor/tts/

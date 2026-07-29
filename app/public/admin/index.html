@@ -76,6 +76,11 @@ tr:hover td { background: #f8fafc; }
 .btn-exportar { background: var(--verde); color: white; border: none; border-radius: 7px; padding: 7px 14px; font-size: .85rem; font-weight: 600; cursor: pointer; }
 .btn-exportar:hover { background: #15803d; }
 .btn-actualizar { background: var(--azul2); color: white; border: none; border-radius: 7px; padding: 7px 12px; font-size: .82rem; cursor: pointer; }
+/* Botones selectores de Documentación (Manual / Licencia) */
+.btn-doc { background: #fff; color: var(--gris); border: 1.5px solid var(--borde); border-radius: 7px; padding: 7px 14px; font-size: .82rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn-doc:hover { color: var(--azul); border-color: var(--azul2); }
+.btn-doc.activo { background: var(--azul2); color: #fff; border-color: var(--azul2); }
+#doc-frame { width: 100%; height: calc(100vh - 200px); min-height: 480px; border: 1.5px solid var(--borde); border-radius: 10px; background: #fff; }
 /* Acciones compactas en tablas (consultorios) */
 .btn-mini { border: 1px solid var(--borde); background: white; color: var(--azul); border-radius: 6px; padding: 4px 10px; font-size: .78rem; font-weight: 600; cursor: pointer; margin-right: 6px; }
 .btn-mini:hover { background: #f1f5f9; }
@@ -150,6 +155,7 @@ tr:hover td { background: #f8fafc; }
     <div class="tab" data-tab="graficas" onclick="mostrarTab('graficas')">Gráficas</div>
     <div class="tab" data-tab="configuracion" onclick="mostrarTab('configuracion')">Configuración</div>
     <div class="tab" data-tab="terminales" onclick="mostrarTab('terminales')">Terminales</div>
+    <div class="tab" data-tab="documentacion" onclick="mostrarTab('documentacion')">Documentación</div>
 </div>
 
 <div class="contenido">
@@ -380,6 +386,23 @@ tr:hover td { background: #f8fafc; }
             </div>
         </div>
     </div>
+
+    <!-- ─────────── DOCUMENTACIÓN ─────────── -->
+    <div class="panel" id="panel-documentacion">
+        <div class="seccion">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Documentación</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn-doc activo" id="btn-doc-manual" onclick="verDoc('manual')">Manual de usuario</button>
+                    <button class="btn-doc" id="btn-doc-licencia" onclick="verDoc('licencia')">Licencia de uso</button>
+                    <button class="btn-actualizar" onclick="abrirDocNueva()">Abrir en pestaña nueva ↗</button>
+                </div>
+            </div>
+            <div style="padding:12px 16px 16px">
+                <iframe id="doc-frame" title="Documento"></iframe>
+            </div>
+        </div>
+    </div>
 </div>
 </div><!-- /app-admin -->
 
@@ -512,7 +535,21 @@ function mostrarTab(nombre) {
     // Terminales incluye la sección Pantallas; su auto-refresco corre solo con la pestaña activa.
     if (nombre === 'terminales') { cargarTerminales(); cargarPantallas(); iniciarAutoRefrescoPantallas(); }
     else detenerAutoRefrescoPantallas();
+
+    // Documentación: carga el manual la primera vez que se abre la pestaña.
+    if (nombre === 'documentacion' && !document.getElementById('doc-frame').getAttribute('src')) verDoc('manual');
 }
+
+// ── Documentación (Manual / Licencia) ────────────────────────────
+const DOCS = { manual: '/docs/manual-usuario.html', licencia: '/docs/licencia.html' };
+let docActual = 'manual';
+function verDoc(cual) {
+    docActual = cual;
+    document.getElementById('doc-frame').setAttribute('src', DOCS[cual]);
+    document.getElementById('btn-doc-manual').classList.toggle('activo', cual === 'manual');
+    document.getElementById('btn-doc-licencia').classList.toggle('activo', cual === 'licencia');
+}
+function abrirDocNueva() { window.open(DOCS[docActual], '_blank'); }
 
 // ── Helpers ─────────────────────────────────────────────────────
 function fmt(n) { return n !== null && n !== undefined ? String(n) : '—'; }
@@ -1297,7 +1334,7 @@ async function cargarConfig() {
         // En la edición Básica la voz no se vende: se ocultan sus parámetros (candado de licencia).
         if (!vozIncluida) { ocultas.add('voz_habilitada'); ocultas.add('voz_plantilla'); }
         // Estas claves son sí/no: se muestran como interruptor (slider), no como texto.
-        const booleanas = new Set(['sonido_habilitado', 'voz_habilitada']);
+        const booleanas = new Set(['sonido_habilitado', 'voz_habilitada', 'mostrar_turno']);
         configs.filter(c => !ocultas.has(c.clave)).forEach(c => {
             const item = document.createElement('div');
             item.className = 'config-item';

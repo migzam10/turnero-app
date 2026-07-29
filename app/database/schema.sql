@@ -102,6 +102,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Anuncio por voz (TTS) en las pantallas TV'),
     ('voz_plantilla',           'Turno para {nombre}. Diríjase a {destino}.',
      'Frase del anuncio por voz; tokens {nombre} y {destino}'),
+    ('mostrar_turno',           'true',
+     'Mostrar el número de turno (N) junto al paciente en Admisiones y Recepción'),
     ('version_db',              '1',
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;
@@ -371,3 +373,15 @@ UPDATE asignaciones_profesionales
         WHERE n = 1
           AND canon <> columna_header
           AND canon <> '');
+
+-- ── Nota de recepción + turnero diario (v11) ─────────────────────────────────
+-- `nota`: texto libre que el personal de recepción deja para admisiones (máx 300).
+-- `turno_numero`: correlativo del día que se REINICIA en 1 cada jornada. Se asigna solo
+-- a los ingresos creados por recepción (los autocreados por Biofile quedan NULL, sin
+-- número). El número lo pone el endpoint /registrar tomando MAX(dia)+1 bajo un advisory
+-- lock, no un trigger: así solo lo reciben los de recepción y no todos los inserts.
+ALTER TABLE pacientes_cola ADD COLUMN IF NOT EXISTS nota VARCHAR(300);
+ALTER TABLE pacientes_cola ADD COLUMN IF NOT EXISTS turno_numero INTEGER;
+-- Único por día; parcial para que los muchos NULL (Biofile) no choquen entre sí.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_turno_dia
+    ON pacientes_cola(fecha, turno_numero) WHERE turno_numero IS NOT NULL;

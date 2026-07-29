@@ -258,3 +258,4 @@ Restart-Service TurneroApp        # reiniciar (tras git pull o cambio de .env)
 Get-Service TurneroApp            # ver si está corriendo
 Stop-Service TurneroApp           # parar
 Get-Content C:\turnero\app\logs\out.log -Tail 30 -Wait   # logs en vivo
+pkg . --output turnero.exe
