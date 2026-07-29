@@ -102,6 +102,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Anuncio por voz (TTS) en las pantallas TV'),
     ('voz_plantilla',           'Turno para {nombre}. Diríjase a {destino}.',
      'Frase del anuncio por voz; tokens {nombre} y {destino}'),
+    ('mostrar_turno',           'true',
+     'Mostrar el número de turno (N) junto al paciente en Admisiones y Recepción'),
     ('version_db',              '1',
      'Versión del esquema de base de datos')
 ON CONFLICT (clave) DO NOTHING;

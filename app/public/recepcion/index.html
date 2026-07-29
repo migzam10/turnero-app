@@ -175,6 +175,8 @@ body { font-family: 'Segoe UI', sans-serif; background: var(--fondo); color: var
                         <option value="CE">Cédula Extranjería CE</option>
                         <option value="PA">Pasaporte PA</option>
                         <option value="RC">Registro Civil RC</option>
+                        <option value="PPT">Permiso de Protección Temporal PPT</option>
+                        <option value="PEP">Permiso Especial de Permanencia PEP</option>
                     </select>
                 </div>
                 <!-- 3. Fecha de nacimiento -->
@@ -315,6 +317,8 @@ socket.on('paciente:prioridad', () => cargarCola());
 socket.on('paciente:actualizado', () => cargarCola());
 socket.on('paciente:eliminado', () => cargarCola());
 socket.on('config:actualizada', () => window.recargarBranding && window.recargarBranding());
+// Al recargar la config (incluye mostrar_turno), repinta la cola para reflejar el cambio.
+document.addEventListener('config:publica', () => renderCola(colaCache));
 socket.on('admision:completada', () => cargarCola());
 
 // ── Estado de la app ────────────────────────────────────────────
@@ -766,7 +770,7 @@ function renderItem(p, atenuado) {
 
     const hora = p.hora_llegada ? new Date(p.hora_llegada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
     // Turno del día (solo los de recepción lo tienen). Los de Biofile van sin número.
-    const turno = p.turno_numero != null ? ` (${p.turno_numero})` : '';
+    const turno = (p.turno_numero != null && window.configPublica?.mostrar_turno !== false) ? ` (${p.turno_numero})` : '';
 
     // Editar y Eliminar solo mientras el paciente sigue 'esperando' (el backend rechaza
     // ambas acciones una vez llamado/admisionado). El id va en el onclick (UUID seguro);

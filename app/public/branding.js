@@ -8,6 +8,11 @@
 //        -> zona del logo del Display (campana por defecto / imagen cargada)
 (function () {
     function aplicarBranding(cfg) {
+        // Deja la config pública disponible para cada módulo (p.ej. mostrar_turno)
+        // y avisa por evento para que la vista se repinte al cambiar.
+        window.configPublica = cfg || {};
+        document.dispatchEvent(new Event('config:publica'));
+
         const sufijo = (cfg && cfg.titulo_sufijo ? cfg.titulo_sufijo : 'Turnero').trim();
 
         document.querySelectorAll('[data-titulo-base]').forEach(el => {
