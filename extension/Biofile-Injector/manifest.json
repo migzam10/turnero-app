@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Inyector Turnero a Biofile",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Lista pacientes del Turnero y los inyecta en Biofile mediante clic.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuIl96xLSFeNDJN1th1qmy/MghVePmkVUcJbFQuE8UFItFo8be2q4OaswxpTl51uKaIQ6iuZPARjSN2ySPAjuZalQCdsZjOj1m9LFeze6PcyRqXHgAAPUE93iHkFGaJEPKeqD5LasiO+gUHQCQxP+rNdK2QcTOJIirA0v/l2hePrFOnCMmmZnislmPLWTCl61iNc4LRJYr4QPrEo9bv24DLGzEBqF5fvye9ngjx3XsU6lZ4b3R27MLUfi/cngWo87+KyUcO+jouOlN64/VdQ607sxFxwAg99SkpHNhK8G8OwaIBCpuVjcKnTMeuMEK9CTxyILN65yzon1j87BmLh5kQIDAQAB",
   "permissions": [
