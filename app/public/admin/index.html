@@ -305,15 +305,17 @@ tr:hover td { background: #f8fafc; }
 
         <div class="seccion">
             <div class="seccion-header"><span class="seccion-titulo">Nuevo profesional</span></div>
-            <div class="config-grid">
-                <div class="config-item">
+            <div style="padding:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <div style="flex:1; min-width:240px;">
                     <div class="config-key">Nombre de usuario</div>
-                    <input id="nuevo-prof-usuario" type="text" maxlength="120" placeholder="ANA GOMEZ">
+                    <input class="config-val" id="nuevo-prof-usuario" type="text" maxlength="120"
+                           style="width:100%; max-width:420px" placeholder="ANA GOMEZ">
                     <div class="config-desc">El mismo con el que entra a Biofile. Se normaliza solo.</div>
                 </div>
-                <div class="config-item">
+                <div style="flex:1; min-width:240px;">
                     <div class="config-key">Nombre visible</div>
-                    <input id="nuevo-prof-display" type="text" maxlength="120" placeholder="opcional">
+                    <input class="config-val" id="nuevo-prof-display" type="text" maxlength="120"
+                           style="width:100%; max-width:420px" placeholder="opcional">
                     <div class="config-desc">Cosmético. Vacío = igual al usuario.</div>
                 </div>
                 <button class="btn-buscar" onclick="crearProfesional()">Crear</button>
