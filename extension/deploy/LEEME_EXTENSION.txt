@@ -1,0 +1,156 @@
+============================================================
+ EXTENSIONES DEL TURNERO — GUÍA DE DESPLIEGUE (paso a paso)
+============================================================
+
+QUÉ SON
+-------
+Dos extensiones de Chrome/Edge que van en cada PC de ADMISIONES
+(los que abren Biofile). NO van en el servidor.
+
+  Biofile-Sync      Lee la tabla de asignaciones de Biofile y la
+                    sincroniza con el turnero (corre en segundo plano).
+  Biofile-Injector  Rellena los campos de Biofile con los datos del
+                    paciente pendiente (al hacer clic).
+
+Se publican en la Chrome Web Store como "No listada" (solo entra
+quien tiene el link o el ID) y se instalan forzadas por política de
+Windows: quedan fijas, no se pueden quitar, se reinstalan solas si
+las borran, y Chrome las actualiza solo desde la tienda.
+
+IDs DE LA TIENDA (los usa instalar_extension_store.bat):
+  Biofile-Sync      ojgcieginkkhnefpmigmpfkmonbkhlkd
+  Biofile-Injector  emhmednejidoeomnikajijlccoapchgl
+
+Funciona con cualquier IPS de Biofile (usan el comodín
+*.biofile.com.co); no hay que cambiar el subdominio por cliente.
+
+El MISMO paquete sirve para TODAS las clínicas: no lleva IP ni
+secreto adentro. Cada terminal los pone en el ENGRANAJE del popup.
+
+
+ARCHIVOS DE ESTA CARPETA
+------------------------
+  build-store.sh              Genera las builds de tienda (ver PARTE 1).
+  build/                      Carpetas listas para "Cargar descomprimida".
+                              Las genera el script; no se versionan.
+  store-zips/                 Los .zip que se suben a la tienda.
+  store-assets/               Capturas e imágenes del listado de la tienda
+                              (NO van dentro del paquete).
+  instalar_extension_store.bat  Se corre en CADA terminal (como admin).
+  _legacy-crx/                Vía vieja de .crx autohospedado. Retirada.
+                              Ver su README antes de usar nada de ahí.
+
+
+============================================================
+ PARTE 1 — GENERAR Y PROBAR (en TU PC)
+============================================================
+
+  1. Subí el número de "version" en el manifest.json de la extensión
+     que cambiaste:
+         ../Biofile-Sync/manifest.json
+         ../Biofile-Injector/manifest.json
+     La tienda RECHAZA subir un zip con una versión ya publicada.
+
+  2. Generá las builds:
+
+         bash extension/deploy/build-store.sh
+
+     (o con el nombre de una sola: build-store.sh Biofile-Injector)
+
+     Deja la misma cosa en dos formatos: la carpeta en build/ y el
+     .zip en store-zips/.
+
+  3. PROBÁ la carpeta de build/ antes de subir nada:
+         chrome://extensions -> Modo desarrollador (arriba a la derecha)
+         -> "Cargar descomprimida" -> elegir  build/<Nombre>/
+
+     >> Probá build/<Nombre>/, NO la carpeta fuente ../<Nombre>/.
+        La fuente lleva "key" y, en el Injector, "host_permissions"
+        que la build de tienda no tiene. La fuente puede funcionar y
+        la build fallar — sobre todo el fetch del popup al servidor,
+        que en la build depende del CORS de app/server.js.
+
+     Al cargarla, abrí el popup, tocá el engranaje y poné el SERVIDOR
+     (IP:PUERTO) y el EXTENSION_SECRET de la clínica de prueba.
+     Comprobá que el popup LISTA pacientes (eso valida el fetch) y
+     que al hacer clic se rellenan los campos en Biofile.
+
+  4. Cuando funcione, subí el .zip de store-zips/ en el Developer
+     Dashboard de Chrome Web Store. La revisión puede tardar días.
+
+
+============================================================
+ PARTE 2 — INSTALAR EN CADA TERMINAL (PC de admisiones)
+============================================================
+
+  1. Copiá  instalar_extension_store.bat  al terminal (USB o red).
+  2. Clic derecho -> "Ejecutar como administrador".
+     No pide IP ni secreto: el paquete es igual para todas las clínicas.
+  3. Cerrá COMPLETAMENTE Chrome y Edge (todas las ventanas) y reabrí.
+  4. Las 2 extensiones aparecen solas (hasta 1-2 min la primera vez).
+     Verificá en chrome://extensions o edge://extensions que dicen
+     "Instalada por una política de empresa".
+  5. En CADA extensión: abrí su popup, tocá el ENGRANAJE de "Conexión",
+     poné el SERVIDOR (IP:PUERTO de ESA clínica) y el EXTENSION_SECRET,
+     y guardá. Eso queda en ese PC.
+
+  Para que el Sync trabaje: dejá abierta en Biofile la pestaña de
+  AtencionesSeguimiento.aspx. Sincroniza solo, en segundo plano.
+
+
+LOS PARÁMETROS DE CONEXIÓN
+--------------------------
+  SERVER_URL        IP:PUERTO del servidor turnero en la LAN
+                    (ej. 192.168.1.100:3000). Se pone en el engranaje.
+  EXTENSION_SECRET  El MISMO secreto del .env del servidor. Sin esto el
+                    servidor rechaza la sincronización. Va en el engranaje.
+  INTERVALO_SEG     Cada cuántos segundos sincroniza el Sync. Se pone en
+                    el mismo engranaje ("Sincronizar cada N seg."), solo
+                    en el Sync. Vacío = el 30 por defecto del paquete.
+                    Mínimo 15 (se ajusta solo si ponés menos); tené en
+                    cuenta que Chrome no dispara alarmas cada menos de
+                    30s, así que valores entre 15 y 30 se comportan igual.
+                    El cambio aplica al instante, sin reiniciar Chrome.
+
+
+============================================================
+ ACTUALIZAR (cuando cambies el código de una extensión)
+============================================================
+
+  Repetí la PARTE 1 completa (subir versión, generar, probar, subir).
+  Los terminales se actualizan solos desde la tienda; NO hay que
+  tocarlos. Chrome revisa cada pocas horas; reiniciar el navegador
+  lo fuerza.
+
+  Si necesitás un arreglo URGENTE y no podés esperar la revisión:
+  cargá build/<Nombre>/ descomprimida en el terminal (modo
+  desarrollador). Es temporal — Chrome la desactiva al reiniciar y
+  la política de la tienda la vuelve a poner.
+
+
+============================================================
+ QUITAR
+============================================================
+  En el terminal, como administrador, borrá las dos entradas de:
+    HKLM\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist
+    HKLM\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist
+  y reiniciá el navegador. (_legacy-crx/desinstalar_extension.bat hace
+  esto mismo, pero está escrito para los IDs viejos del .crx.)
+
+
+============================================================
+ SEGURIDAD  (leer)
+============================================================
+  - El paquete que se sube NO lleva IP ni secreto: build-store.sh
+    regenera el config.js en blanco desde config.example.js, y falla
+    si quedó algún valor adentro. Nunca copia tu config.js local.
+  - El config.js con datos locales no se sube a git (.gitignore).
+  - Las capturas del listado van en store-assets/, FUERA del paquete:
+    todo lo que va dentro del .zip se distribuye a cada terminal.
+  - Las llaves .pem de la vía vieja siguen en _legacy-crx/ y están en
+    .gitignore. Guardalas igual: si alguna vez hay que volver al .crx
+    autohospedado, sin ellas cambia el ID.
+  - Si el PC usa software de "restaurar/congelar al reiniciar"
+    (Deep Freeze y similares), hay que instalar la extensión y RECIÉN
+    ahí congelar la imagen; si no, la política se borra al reiniciar.
+============================================================

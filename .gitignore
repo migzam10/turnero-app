@@ -6,8 +6,11 @@ npm-debug.log*
 .claude/
 
 # Llaves privadas de firma de las extensiones (NO subir nunca) y .crx generados
-extension-deploy/*.pem
-extension-deploy/*.crx
+extension/deploy/_legacy-crx/*.pem
+extension/deploy/_legacy-crx/*.crx
+
+# Builds de tienda generados por build-store.sh (se regeneran; el .zip sí se versiona)
+extension/deploy/build/
 # .crx y updates.xml generados que se copian al public del servidor (no versionar)
 app/public/*.crx
 app/public/updates.xml
