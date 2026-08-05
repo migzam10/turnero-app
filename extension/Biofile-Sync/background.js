@@ -1,17 +1,24 @@
 importScripts('config.js', 'config-override.js');
 
-// Cadencia de sincronización. NUNCA por debajo de 15s para no disparar el rate-limit /
-// firewall de Biofile. chrome.alarms es el reemplazo fiable de setInterval en un service
-// worker MV3: setInterval muere cuando el SW se suspende (~30s de inactividad), mientras que
+// Cadencia de sincronización. Sale de la config efectiva (engranaje del popup, con
+// config.js de respaldo) y NUNCA baja de 15s para no disparar el rate-limit / firewall
+// de Biofile. chrome.alarms es el reemplazo fiable de setInterval en un service worker
+// MV3: setInterval muere cuando el SW se suspende (~30s de inactividad), mientras que
 // alarms persiste y reanima al worker. El mínimo efectivo de periodInMinutes es 0.5 (30s).
-const POLL_SEGUNDOS = Math.max(15, Number(CONFIG.INTERVALO_SEG) || 30);
-
-function programarAlarma() {
-    chrome.alarms.create('sync', { periodInMinutes: POLL_SEGUNDOS / 60 });
+async function programarAlarma() {
+    const { INTERVALO_SEG } = await getEffectiveConfig();
+    chrome.alarms.create('sync', { periodInMinutes: INTERVALO_SEG / 60 });
 }
 
 chrome.runtime.onInstalled.addListener(programarAlarma);
 chrome.runtime.onStartup.addListener(programarAlarma);
+
+// Al guardar el intervalo desde el popup hay que rehacer la alarma: chrome.alarms.create
+// con el mismo nombre reemplaza la anterior. Sin esto el cambio solo aplicaría al
+// reiniciar el navegador.
+chrome.storage.onChanged.addListener((cambios, area) => {
+    if (area === 'local' && cambios[OVERRIDE_KEY]) programarAlarma();
+});
 
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'sync') syncRegistrado();
