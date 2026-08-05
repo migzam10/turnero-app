@@ -197,15 +197,17 @@ Dos extensiones (van en los PCs que abren Biofile, **no** en el servidor):
 > **Funciona con cualquier IPS que use Biofile.** Las extensiones usan el comodín
 > `*.biofile.com.co`, así que **no hay que cambiar el subdominio** por cliente.
 
-En **cada una**, crear su `config.js` a partir de `config.example.js`:
+En **cada una**, la conexión se configura en el **engranaje del popup** de la extensión,
+en cada PC (no va dentro del paquete):
 - `SERVER_URL`: `http://IP_DEL_SERVIDOR:3000`
 - `EXTENSION_SECRET`: el mismo del `.env` del servidor (ambas lo necesitan).
 
 **Dos formas de instalarlas:**
 - **Manual** (rápida, para probar o pocos PCs): `chrome://extensions` → Modo desarrollador
   → "Cargar extensión sin empaquetar" → elegir la carpeta de cada extensión.
-- **Forzada por política de Windows** (recomendada en producción): queda fija, se reinstala
-  sola y se actualiza desde el servidor. Ver la carpeta **`extension-deploy/`** y su LEEME.
+- **Forzada por política de Windows** (recomendada en producción): se instalan desde la
+  Chrome Web Store, quedan fijas y se actualizan solas. Ver la carpeta
+  **`extension/deploy/`** y su LEEME.
 
 La sincronización corre sola con la pestaña de `AtencionesSeguimiento.aspx` abierta.
 
