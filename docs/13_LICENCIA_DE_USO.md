@@ -8,15 +8,14 @@ Copyright (c) 2026 MIGUEL ZAMBRANO. Todos los derechos reservados.
 
 ## Resumen
 
-Puedes usar el Software sin límite, ver su código, modificarlo y adaptarlo a tus
-necesidades. **No puedes distribuirlo a terceros ni explotarlo comercialmente**
+Puedes usar el Software sin límite. **No puedes distribuirlo a terceros ni explotarlo comercialmente**
 sin autorización escrita del Titular. En caso de duda, mandan las secciones 1 a 9.
 
 ---
 
 ## 0. Definiciones
 
-- **Software**: el sistema de gestión de turnos "Turnero", incluyendo su código fuente y ejecutable, esquema y scripts de base de datos, extensiones de navegador, scripts de instalación y despliegue, recursos gráficos y documentación asociada.
+- **Software**: el sistema de gestión de turnos "Turnero", incluyendo su ejecutable, esquema y scripts de base de datos, extensiones de navegador, scripts de instalación y despliegue, recursos gráficos y documentación asociada.
 - **Titular**: el autor y titular de los derechos patrimoniales de autor sobre el Software.
 - **Licenciatario**: toda persona natural o jurídica que reciba una copia autorizada del Software.
 - **Obra derivada**: cualquier versión modificada, adaptada, traducida, extendida o integrada del Software, total o parcial.
@@ -30,7 +29,7 @@ sin autorización escrita del Titular. En caso de duda, mandan las secciones 1 a
 Por la presente se concede al Licenciatario una licencia **perpetua, mundial, libre de regalías, no exclusiva e intransferible** para, exclusivamente en el marco de su Uso interno:
 
 1. Instalar, ejecutar y usar el Software sin límite de servidores, terminales, pantallas, usuarios o sedes de la misma organización.
-2. Acceder, estudiar y analizar su código fuente.
+2. Acceder, estudiar y analizar el sistema.
 3. Copiar el Software y su documentación cuantas veces sea necesario, incluidas copias de respaldo.
 4. Modificar, corregir, adaptar, traducir y extender el Software, y crear Obras derivadas, sin necesidad de autorización previa ni de notificación al Titular.
 5. Encargar cualquiera de las actividades anteriores a su propio personal o a terceros contratados, quienes quedan sujetos a las mismas restricciones de la sección 2.
