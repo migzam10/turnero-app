@@ -31,6 +31,14 @@ sincronizar.sh
 # Backups de la BD generados por scripts/backup-db.sh
 backups/
 
+# Licencias emitidas y estado local del candado de licencia.
+# La llave PRIVADA de firma vive fuera del repo (~/.turnero-licencias/) y no
+# debe llegar nunca acá: quien la tenga puede emitirse una licencia perpetua.
+licencias/
+*.lic
+*.pem
+.turnero-estado
+
 scripts/fase0-analisis*
 
 # Binarios/modelos de TTS (piper) y cache de audio generado en el servidor.

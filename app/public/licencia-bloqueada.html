@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Turnero — Licencia</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.card { background: white; border-radius: 14px; border: 2px solid #e2e8f0; padding: 40px 36px; max-width: 520px; width: 100%; text-align: center; }
+.icono { color: #b45309; display: flex; justify-content: center; margin-bottom: 18px; }
+.icono svg { width: 44px; height: 44px; }
+h1 { font-size: 1.35rem; color: #1a3a6e; font-weight: 800; margin-bottom: 10px; }
+.motivo { color: #475569; font-size: .95rem; line-height: 1.6; margin-bottom: 24px; }
+.datos { border-top: 1px solid #e2e8f0; padding-top: 18px; margin-bottom: 20px; text-align: left; display: none; }
+.fila { display: flex; justify-content: space-between; gap: 16px; font-size: .85rem; padding: 5px 0; }
+.fila span:first-child { color: #94a3b8; }
+.fila span:last-child { color: #334155; font-weight: 600; }
+.ayuda { font-size: .85rem; color: #64748b; line-height: 1.6; background: #f8fafc; border-radius: 10px; padding: 14px 16px; }
+.pie { margin-top: 22px; font-size: .75rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="icono">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10" width="16" height="10" rx="2"/>
+            <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+            <path d="M12 14v2"/>
+        </svg>
+    </div>
+    <h1>Sistema no disponible</h1>
+    <div class="motivo" id="motivo">La licencia de uso de este sistema no está vigente.</div>
+
+    <div class="datos" id="datos">
+        <div class="fila"><span>Licenciatario</span><span id="cliente">—</span></div>
+        <div class="fila"><span>Vencimiento</span><span id="vence">—</span></div>
+    </div>
+
+    <div class="ayuda">
+        Comuníquese con el proveedor del sistema para renovar la licencia.
+        Los datos registrados no se han perdido: el servicio vuelve a operar
+        normalmente al instalar una licencia vigente.
+    </div>
+
+    <div class="pie">Turnero</div>
+</div>
+
+<script>
+fetch('/api/licencia/estado')
+    .then(r => r.json())
+    .then(e => {
+        if (e.mensaje) document.getElementById('motivo').textContent = e.mensaje;
+        if (e.cliente) {
+            document.getElementById('cliente').textContent = e.cliente;
+            document.getElementById('vence').textContent = e.vence || '—';
+            document.getElementById('datos').style.display = 'block';
+        }
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS terminales (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ── Estado interno de la licencia ────────────────────────────────────────────
+-- Deliberadamente separada de `configuracion`: esa tabla se expone completa en
+-- el panel de Admin y es editable, mientras que esto no lo puede tocar nadie.
+-- Guarda la fecha más adelantada ya vista por el sistema, para detectar que se
+-- atrase el reloj del servidor con la intención de revivir una licencia vencida.
+CREATE TABLE IF NOT EXISTS licencia_estado (
+    clave VARCHAR(40) PRIMARY KEY,
+    valor TEXT NOT NULL
+);
+
 -- ── Configuración del sistema ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS configuracion (
     clave       VARCHAR(60) PRIMARY KEY,

@@ -8,7 +8,15 @@
 //
 // Default seguro: si el .env no trae EDICION, se asume 'basica' (sin voz), para no
 // regalar la voz por un olvido al instalar.
+//
+// Cuando la instalación exige licencia (ver utils/licencia.js), manda la edición
+// FIRMADA dentro de la licencia y el .env deja de contar: así el cliente no pasa
+// de Básica a Plus editando una línea de texto.
+const { estadoLicencia } = require('./licencia');
+
 function edicion() {
+    const lic = estadoLicencia();
+    if (lic.requerida && lic.edicion) return lic.edicion;
     return (process.env.EDICION || 'basica').trim().toLowerCase();
 }
 
