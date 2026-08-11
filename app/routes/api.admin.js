@@ -6,6 +6,7 @@ const { fechaHoyBogota } = require('../utils/fecha');
 const { registrarEvento } = require('../utils/audit');
 const { canonizar, sanear } = require('../utils/nombreProfesional');
 const { hashear } = require('../utils/password');
+const { estadoLicencia } = require('../utils/licencia');
 
 const router = Router();
 
@@ -100,6 +101,14 @@ router.post('/config', async (req, res) => {
     } catch (err) {
         return res.status(500).json({ error: 'db_error' });
     }
+});
+
+// ── Licencia ──────────────────────────────────────────────────
+// Estado del candado de licencia, para mostrarlo en la pestaña Documentación.
+// Es solo de lectura: la licencia se cambia reemplazando el archivo en el
+// servidor, nunca desde el panel.
+router.get('/licencia', (req, res) => {
+    return res.json(estadoLicencia());
 });
 
 // ── Terminales ────────────────────────────────────────────────

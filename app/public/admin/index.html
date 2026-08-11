@@ -81,6 +81,12 @@ tr:hover td { background: #f8fafc; }
 .btn-doc:hover { color: var(--azul); border-color: var(--azul2); }
 .btn-doc.activo { background: var(--azul2); color: #fff; border-color: var(--azul2); }
 #doc-frame { width: 100%; height: calc(100vh - 200px); min-height: 480px; border: 1.5px solid var(--borde); border-radius: 10px; background: #fff; }
+.lic-badge { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 4px 10px; border-radius: 999px; background: #f1f5f9; color: var(--gris); }
+.lic-badge.activa { background: #dcfce7; color: #15803d; }
+.lic-badge.por_vencer { background: #fef3c7; color: #b45309; }
+.lic-badge.bloqueada { background: #fee2e2; color: #b91c1c; }
+.lic-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.lic-valor { font-size: .88rem; font-weight: 600; color: var(--texto); }
 /* Acciones compactas en tablas (consultorios) */
 .btn-mini { border: 1px solid var(--borde); background: white; color: var(--azul); border-radius: 6px; padding: 4px 10px; font-size: .78rem; font-weight: 600; cursor: pointer; margin-right: 6px; }
 .btn-mini:hover { background: #f1f5f9; }
@@ -391,6 +397,31 @@ tr:hover td { background: #f8fafc; }
 
     <!-- ─────────── DOCUMENTACIÓN ─────────── -->
     <div class="panel" id="panel-documentacion">
+        <!-- Solo se muestra en instalaciones con licencia con vencimiento. -->
+        <div class="seccion" id="seccion-licencia" style="display:none">
+            <div class="seccion-header">
+                <span class="seccion-titulo">Licencia del sistema</span>
+                <span class="lic-badge" id="lic-badge">—</span>
+            </div>
+            <div style="padding:14px 16px 16px">
+                <div class="lic-grid">
+                    <div>
+                        <div class="config-key">Licenciatario</div>
+                        <div class="lic-valor" id="lic-cliente">—</div>
+                    </div>
+                    <div>
+                        <div class="config-key">Edición</div>
+                        <div class="lic-valor" id="lic-edicion">—</div>
+                    </div>
+                    <div>
+                        <div class="config-key">Vigencia</div>
+                        <div class="lic-valor" id="lic-vence">—</div>
+                    </div>
+                </div>
+                <div class="config-desc" id="lic-mensaje" style="margin-top:12px"></div>
+            </div>
+        </div>
+
         <div class="seccion">
             <div class="seccion-header">
                 <span class="seccion-titulo">Documentación</span>
@@ -539,7 +570,10 @@ function mostrarTab(nombre) {
     else detenerAutoRefrescoPantallas();
 
     // Documentación: carga el manual la primera vez que se abre la pestaña.
-    if (nombre === 'documentacion' && !document.getElementById('doc-frame').getAttribute('src')) verDoc('manual');
+    if (nombre === 'documentacion') {
+        if (!document.getElementById('doc-frame').getAttribute('src')) verDoc('manual');
+        cargarLicencia();
+    }
 }
 
 // ── Documentación (Manual / Licencia) ────────────────────────────
@@ -550,6 +584,31 @@ function verDoc(cual) {
     document.getElementById('doc-frame').setAttribute('src', DOCS[cual]);
     document.getElementById('btn-doc-manual').classList.toggle('activo', cual === 'manual');
     document.getElementById('btn-doc-licencia').classList.toggle('activo', cual === 'licencia');
+}
+
+// Estado del candado de licencia. En instalaciones sin licencia con vencimiento
+// (las que corren desde código) el bloque queda oculto: no hay nada que mostrar.
+const LIC_TEXTO = { activa: 'Vigente', por_vencer: 'Por vencer', bloqueada: 'Bloqueada' };
+
+async function cargarLicencia() {
+    try {
+        const r = await fetchAdmin('/api/admin/licencia');
+        if (!r.ok) return;
+        const lic = await r.json();
+        if (!lic.requerida) return;
+
+        const badge = document.getElementById('lic-badge');
+        badge.textContent = LIC_TEXTO[lic.estado] || lic.estado;
+        badge.className = 'lic-badge ' + lic.estado;
+
+        document.getElementById('lic-cliente').textContent = lic.cliente || '—';
+        document.getElementById('lic-edicion').textContent =
+            lic.edicion === 'plus' ? 'Plus (con voz)' : lic.edicion === 'basica' ? 'Básica' : '—';
+        document.getElementById('lic-vence').textContent =
+            lic.vence ? lic.vence + (lic.diasRestantes >= 0 ? ` (${lic.diasRestantes} día(s))` : '') : 'Perpetua';
+        document.getElementById('lic-mensaje').textContent = lic.mensaje || '';
+        document.getElementById('seccion-licencia').style.display = '';
+    } catch { /* sin licencia que mostrar */ }
 }
 function abrirDocNueva() { window.open(DOCS[docActual], '_blank'); }
 
